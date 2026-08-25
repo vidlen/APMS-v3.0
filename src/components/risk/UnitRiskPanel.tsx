@@ -23,13 +23,13 @@ const RUNWAY_OPTIONS: { id: string; label: string }[] = [
   { id: "07L/25R", label: "RWY 07L/25R" },
 ];
 
-const ZONE_LABELS: Record<Zone, string> = { ujung: "Ujung", tengah: "Tengah" };
+const ZONE_LABELS: Record<Zone, string> = { ujung: "End", tengah: "Middle" };
 
 const RATE_LABELS: Record<ObservedRateClass, string> = {
-  stabil: "Stabil",
-  memburuk: "Memburuk",
-  memburuk_cepat: "Memburuk cepat",
-  tidak_terdefinisi: "Tidak terdefinisi",
+  stabil: "Stable",
+  memburuk: "Worsening",
+  memburuk_cepat: "Worsening Fast",
+  tidak_terdefinisi: "Undefined",
 };
 
 const RATE_COLORS: Record<ObservedRateClass, string> = {
@@ -110,12 +110,12 @@ export default function UnitRiskPanel({ selectedYear }: UnitRiskPanelProps) {
         <div className="flex flex-wrap items-center gap-2">
           <Select value={zoneFilter} onValueChange={(v) => setZoneFilter(v as "all" | Zone)}>
             <SelectTrigger className="h-8 w-28 text-xs">
-              <SelectValue placeholder="Zona" />
+              <SelectValue placeholder="Zone" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Semua zona</SelectItem>
-              <SelectItem value="ujung">Ujung</SelectItem>
-              <SelectItem value="tengah">Tengah</SelectItem>
+              <SelectItem value="all">All zones</SelectItem>
+              <SelectItem value="ujung">End</SelectItem>
+              <SelectItem value="tengah">Middle</SelectItem>
             </SelectContent>
           </Select>
 
@@ -127,7 +127,7 @@ export default function UnitRiskPanel({ selectedYear }: UnitRiskPanelProps) {
               <SelectValue placeholder="Degree" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Semua degree</SelectItem>
+              <SelectItem value="all">All degrees</SelectItem>
               {RISK_BANDS.map((b) => (
                 <SelectItem key={b.degree} value={String(b.degree)}>
                   Degree {b.degree}
@@ -138,10 +138,10 @@ export default function UnitRiskPanel({ selectedYear }: UnitRiskPanelProps) {
 
           <Select value={rateFilter} onValueChange={(v) => setRateFilter(v as "all" | ObservedRateClass)}>
             <SelectTrigger className="h-8 w-40 text-xs">
-              <SelectValue placeholder="Laju" />
+              <SelectValue placeholder="Rate" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Semua laju</SelectItem>
+              <SelectItem value="all">All rates</SelectItem>
               {(Object.keys(RATE_LABELS) as ObservedRateClass[]).map((k) => (
                 <SelectItem key={k} value={k}>
                   {RATE_LABELS[k]}
@@ -157,9 +157,9 @@ export default function UnitRiskPanel({ selectedYear }: UnitRiskPanelProps) {
                 ? "border-border text-foreground hover:bg-secondary"
                 : "border-primary text-primary bg-primary/10"
             }`}
-            title="Unit dengan PCI pengisi tampilan (bukan hasil survei) - lihat bagian 0.6"
+            title="Units whose PCI is a display filler, not a survey result - see section 0.6"
           >
-            {hideDummyPci ? "Dummy PCI disembunyikan" : "Dummy PCI ditampilkan"}
+            {hideDummyPci ? "Dummy PCI hidden" : "Dummy PCI shown"}
           </button>
         </div>
       </div>
@@ -182,7 +182,7 @@ export default function UnitRiskPanel({ selectedYear }: UnitRiskPanelProps) {
       </div>
 
       <div className="text-[11px] text-muted-foreground">
-        {rows.length} dari {results.length} unit ditampilkan
+        {rows.length} of {results.length} units shown
       </div>
 
       <div className="rounded-lg border border-border overflow-hidden">
@@ -191,16 +191,16 @@ export default function UnitRiskPanel({ selectedYear }: UnitRiskPanelProps) {
             <TableHeader className="sticky top-0 bg-card z-10">
               <TableRow>
                 <TableHead className="px-2">Unit</TableHead>
-                <TableHead className="px-2">Stasiun</TableHead>
-                <TableHead className="px-2">Zona</TableHead>
-                <TableHead className="px-2">Indeks</TableHead>
+                <TableHead className="px-2">Station</TableHead>
+                <TableHead className="px-2">Zone</TableHead>
+                <TableHead className="px-2">Index</TableHead>
                 <TableHead className="px-2">L</TableHead>
                 <TableHead className="px-2">F</TableHead>
                 <TableHead className="px-2">C</TableHead>
                 <TableHead className="px-2">R</TableHead>
                 <TableHead className="px-2">Degree</TableHead>
                 <TableHead className="px-2">ICAO</TableHead>
-                <TableHead className="px-2">Laju</TableHead>
+                <TableHead className="px-2">Rate</TableHead>
                 <TableHead className="px-2" title="Degree / Relevancy / Urgency (Anderson DRU)">
                   DRU
                 </TableHead>
@@ -214,14 +214,14 @@ export default function UnitRiskPanel({ selectedYear }: UnitRiskPanelProps) {
                     <span className="inline-flex items-center gap-1">
                       {r.unitNumber}
                       {r.excludedFromRate && (
-                        <span title="Diperbaiki sejak survei sebelumnya - dikecualikan dari kelas laju">
+                        <span title="Repaired since previous survey - excluded from the observed-rate class">
                           <Wrench size={11} className="text-primary shrink-0" aria-label="Repaired since previous survey" />
                         </span>
                       )}
                       {!r.pciIsReal && (
                         <span
                           className="text-[8px] px-1 py-0.5 rounded-full bg-secondary text-muted-foreground uppercase tracking-wide"
-                          title="PCI pengisi tampilan, bukan hasil survei"
+                          title="Display-filler PCI, not a survey result"
                         >
                           dummy
                         </span>
@@ -274,7 +274,7 @@ export default function UnitRiskPanel({ selectedYear }: UnitRiskPanelProps) {
                       <PopoverTrigger asChild>
                         <button
                           className="p-1 rounded-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                          title="Tampilkan cara unit ini dinilai"
+                          title="Show how this unit was scored"
                           aria-label={`Show trace for unit ${r.unitNumber}`}
                         >
                           <Info size={14} />
@@ -311,7 +311,7 @@ export default function UnitRiskPanel({ selectedYear }: UnitRiskPanelProps) {
               {rows.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={13} className="text-center text-muted-foreground py-8">
-                    Tidak ada unit yang cocok dengan penyaring.
+                    No units match your filter.
                   </TableCell>
                 </TableRow>
               )}
