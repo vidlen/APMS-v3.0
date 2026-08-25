@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node --test src/lib/risk.test.ts src/lib/risk-adapter.test.ts src/lib/data-overrides.test.ts src/lib/icao.test.ts src/lib/markov-forecast.test.ts src/lib/rehab.test.ts src/lib/repair-log.test.ts src/lib/dominant-distress.test.ts src/lib/risk-cost.test.ts"
+    "test": "node --test src/lib/risk.test.ts src/lib/risk-adapter.test.ts src/lib/data-overrides.test.ts src/lib/icao.test.ts src/lib/markov-forecast.test.ts src/lib/rehab.test.ts src/lib/repair-log.test.ts src/lib/dominant-distress.test.ts src/lib/risk-cost.test.ts src/lib/risk-unit.test.ts src/lib/risk-unit-adapter.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

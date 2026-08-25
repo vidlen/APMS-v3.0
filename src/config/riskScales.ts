@@ -691,3 +691,60 @@ export type DistressSource = (typeof DISTRESS_SOURCE_ORDER)[number] | 'none';
 export const REPAIR_LOG_NO_RECORD_IN_WINDOW: string[] = [
   'M2', 'M8', 'N2', 'N4', 'N8', 'N8M', 'NC1', 'NC4', 'NC6', 'NC7', 'NC9', 'NCY',
 ];
+
+/* =============================================================================
+ * 9. METODE B - DISTRESS-DERIVED LIKELIHOOD (sample-unit tier, risk-unit.ts)
+ *
+ * Everything above this section scores a BRANCH from one aggregate PCI value
+ * (PCI_TO_LIKELIHOOD, untouched). Metode B scores a SAMPLE UNIT directly from
+ * its own distress records - type, severity and PAVER density - so Likelihood
+ * no longer passes through PCI at all on this path. PCI_TO_LIKELIHOOD must
+ * stay unused here even for a unit with zero distress: that unit gets index 0
+ * and likelihood 0.1, never a PCI-derived figure. See metode-b-spec_4.md
+ * section 0.6.1 point 5.
+ * ========================================================================== */
+
+/** Severity weight, 1 to 4. Unitless, applies to every distress type. */
+export const SEVERITY_LEVEL: Record<'N/A' | 'Low' | 'Medium' | 'High', 1 | 2 | 3 | 4> = {
+  'N/A': 1,
+  Low: 2,
+  Medium: 3,
+  High: 4,
+};
+
+/**
+ * Extent-level thresholds, PER DISTRESS TYPE, read against PAVER's own
+ * density output. Must stay per-type: L&T CR's density is linear-quantity /
+ * area x 100 (m per m2 x 100), while every other type here is area / area x
+ * 100 (dimensionless) - the two are not on the same scale, so one shared
+ * threshold set would silently compare apples to metres. Thresholds are the
+ * Q1/Q2/Q3 quartiles of the 2025 survey's real density distribution per type
+ * (metode-b-spec_4.md section 3.4 table).
+ *
+ * ponytail: fixed thresholds from one survey year, not recalibrated per year.
+ * Recalibrate once a second full survey year's density distribution exists.
+ */
+export const EXTENT_LEVEL_THRESHOLDS: Record<string, [number, number, number]> = {
+  RAVELING: [0.05, 0.20, 1.00],
+  'L & T CR': [0.08, 0.15, 0.50],
+  'ALLIGATOR CR': [0.05, 0.15, 0.35],
+  PATCHING: [0.10, 0.25, 0.60],
+  BLEEDING: [0.50, 5.0, 20.0],
+};
+
+/** Fallback thresholds for a distress type EXTENT_LEVEL_THRESHOLDS has no row for. */
+export const EXTENT_LEVEL_FALLBACK: [number, number, number] = [0.05, 0.20, 1.00];
+
+/**
+ * Maps a unit's 0..16 distress index onto the seven LIKELIHOOD_VALUES levels.
+ * Boundaries are provisional - see metode-b-spec_4.md section 12 item 2.
+ */
+export const DISTRESS_INDEX_TO_LIKELIHOOD = [
+  { minIndex: 13, likelihood: 10 },
+  { minIndex: 10, likelihood: 6 },
+  { minIndex: 7, likelihood: 3 },
+  { minIndex: 5, likelihood: 1 },
+  { minIndex: 3, likelihood: 0.5 },
+  { minIndex: 1, likelihood: 0.2 },
+  { minIndex: 0, likelihood: 0.1 },
+] as const;

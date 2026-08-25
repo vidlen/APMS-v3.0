@@ -319,7 +319,7 @@ function loadCommittedLogByBranch(): Record<string, DistressTally[]> {
 }
 
 test('06/24 resolves via units to RAVELING - matches the old reviewed-inventory value', () => {
-  const units = { '06/24': loadUnitsFc('../../public/data/runway-06-24-units.json') };
+  const units = { '06/24': loadUnitsFc('../../public/data/runway-06-24-units-2025.json') };
   const result = resolveDominantDistress('06/24', undefined, units, loadCommittedLogByBranch());
   assert.deepEqual(result, { distress: 'RAVELING', source: 'units' });
 });
@@ -332,7 +332,7 @@ test('07L/25R resolves via units to ALLIGATOR CR - NOT the old reviewed-inventor
   // v2.8 surfaces the number the survey itself supports, not the hand-typed
   // guess. Both distresses map to hazard class 'structural', so this changes
   // the displayed distress but not the score.
-  const units = { '07L/25R': loadUnitsFc('../../public/data/runway-07L-25R-units.json') };
+  const units = { '07L/25R': loadUnitsFc('../../public/data/runway-07L-25R-units-2025.json') };
   const result = resolveDominantDistress('07L/25R', undefined, units, loadCommittedLogByBranch());
   assert.deepEqual(result, { distress: 'ALLIGATOR CR', source: 'units' });
 
@@ -354,7 +354,7 @@ test('07L/25R: units and log disagree, but both land on hazard class structural,
     dominantDistress: byBranch['07L/25R'].sort((a, b) => b.severityArea - a.severityArea)[0].distress,
   }).hazardClass;
 
-  const units = { '07L/25R': loadUnitsFc('../../public/data/runway-07L-25R-units.json') };
+  const units = { '07L/25R': loadUnitsFc('../../public/data/runway-07L-25R-units-2025.json') };
   const unitsResult = resolveDominantDistress('07L/25R', undefined, units, byBranch);
   const unitsWinnerHazard = scoreBranch({
     branchId: '07L/25R', branchName: '07L/25R', role: 'runway',

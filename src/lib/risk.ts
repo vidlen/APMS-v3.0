@@ -233,8 +233,10 @@ const DISTRESS_SOURCE_LABELS: Record<Exclude<DistressSource, 'none'>, string> = 
 
 /** Trim + uppercase, then DISTRESS_ALIASES, matching canonicalDistress in
  *  dominant-distress.ts. Duplicated rather than imported so risk.ts keeps its
- *  narrow riskScales.ts-only dependency surface - both read the same table. */
-function canonicalise(distress: string): string {
+ *  narrow riskScales.ts-only dependency surface - both read the same table.
+ *  Exported for risk-unit.ts (Metode B), which canonicalises the same way
+ *  and must not fork the logic into a third copy. */
+export function canonicalise(distress: string): string {
   const key = distress.trim().toUpperCase();
   return DISTRESS_ALIASES[key] ?? key;
 }

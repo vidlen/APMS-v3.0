@@ -14,11 +14,13 @@ import { ICAO_ZONES, ICAO_GRID_PROVENANCE, type IcaoZoneName } from "@/config/ic
 import { RISK_BANDS, DOMINANT_DISTRESS_METRIC, type BranchRole } from "@/config/riskScales";
 import MapView, { type MapColorMode } from "@/components/MapView";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import RiskRegisterTable from "./RiskRegisterTable";
 import IcaoMatrixPanel from "./IcaoMatrixPanel";
 import ComparisonViews from "./ComparisonViews";
 import DistressCoveragePanel from "./DistressCoveragePanel";
 import RiskMethodologyPanel from "./RiskMethodologyPanel";
+import UnitRiskPanel from "./UnitRiskPanel";
 
 interface RiskTabProps {
   sections: SectionData[];
@@ -306,31 +308,49 @@ export default function RiskTab({
         </div>
       </div>
 
-      <DistressCoveragePanel
-        stats={repairLogStats}
-        coveredBranches={coveredBranches}
-        totalBranches={results.length}
-        sampleUnitBranchCount={Object.keys(unitsBySection).length}
-      />
+      <Tabs defaultValue="register">
+        <TabsList>
+          <TabsTrigger value="register">Branch Register</TabsTrigger>
+          <TabsTrigger value="units">Sample Units (Metode B)</TabsTrigger>
+        </TabsList>
 
-      <RiskMethodologyPanel />
+        <TabsContent value="register" className="space-y-5 mt-5">
+          <DistressCoveragePanel
+            stats={repairLogStats}
+            coveredBranches={coveredBranches}
+            totalBranches={results.length}
+            sampleUnitBranchCount={Object.keys(unitsBySection).length}
+          />
 
-      <RiskRegisterTable
-        results={results}
-        roleByBranch={roleByBranch}
-        topLogDistressesByBranch={topLogDistressesByBranch}
-        query={query}
-        onQueryChange={setQuery}
-        cellFilter={selectedCell}
-        onClearCellFilter={() => setSelectedCell(null)}
-      />
+          <RiskMethodologyPanel />
 
-      <ComparisonViews
-        inputs={inputs}
-        results={results}
-        roleByBranch={roleByBranch}
-        onSelectCell={handleSelectCell}
-      />
+          <RiskRegisterTable
+            results={results}
+            roleByBranch={roleByBranch}
+            topLogDistressesByBranch={topLogDistressesByBranch}
+            query={query}
+            onQueryChange={setQuery}
+            cellFilter={selectedCell}
+            onClearCellFilter={() => setSelectedCell(null)}
+          />
+
+          <ComparisonViews
+            inputs={inputs}
+            results={results}
+            roleByBranch={roleByBranch}
+            onSelectCell={handleSelectCell}
+          />
+        </TabsContent>
+
+        <TabsContent value="units" className="mt-5">
+          {/* Sample-unit level Fine-Kinney scoring (Metode B) - a separate
+              path from the branch register above, derived directly from each
+              unit's own distress records rather than the branch's aggregate
+              PCI. Real data only for 06/24 and 07L/25R (section 0.6);
+              UnitRiskPanel scopes its own runway selector to those two. */}
+          <UnitRiskPanel selectedYear={selectedYear} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
