@@ -1,5 +1,5 @@
 import { BarChart3, ChevronUp } from "lucide-react";
-import { pciCategories } from "@/lib/pci-utils";
+import { pciCategories, NOT_SURVEYED } from "@/lib/pci-utils";
 
 interface LegendProps {
   activeBands: Set<string>;
@@ -81,6 +81,29 @@ export default function Legend({
               </button>
             );
           })}
+      </div>
+
+      <div className="my-3 border-t border-dashed border-border" />
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-1.5">
+        Outside PCI scale
+      </p>
+      <div
+        aria-disabled
+        title="Branches with no PCI survey on record"
+        className="w-full flex items-center gap-3.5 py-1.5 px-1.5 -mx-1.5 rounded-md"
+      >
+        <span className="pci-swatch pci-swatch--not-surveyed w-4 h-4 rounded-[5px] shrink-0" />
+        <span className="text-sm text-muted-foreground flex items-baseline gap-2">
+          <span className="font-mono tabular-nums inline-block w-[54px] shrink-0 whitespace-nowrap">
+            —
+          </span>
+          <span className="font-medium text-foreground">{NOT_SURVEYED.label}</span>
+          {bandCounts?.[NOT_SURVEYED.label] !== undefined && (
+            <span className="font-mono tabular-nums text-muted-foreground">
+              {bandCounts[NOT_SURVEYED.label]}
+            </span>
+          )}
+        </span>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import { Search, X } from "lucide-react";
 import { useState, useMemo, useRef, useEffect } from "react";
 import type { SectionData } from "@/lib/pci-utils";
-import { getPCICategory, parsePCIValue } from "@/lib/pci-utils";
+import { getPCICategory, parsePCIValue, isNotSurveyed } from "@/lib/pci-utils";
 import { Kbd } from "@/components/ui/kbd";
 
 interface SearchBarProps {
@@ -125,13 +125,12 @@ export default function SearchBar({ sections, onSelect, selectedSection }: Searc
                     }`}
                   >
                     <div
-                      className="pci-swatch w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold font-mono tabular-nums flex-shrink-0"
-                      style={{
-                        backgroundColor: cat.color,
-                        color: cat.textColor,
-                      }}
+                      className={`pci-swatch w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold font-mono tabular-nums flex-shrink-0 ${
+                        isNotSurveyed(cat) ? "pci-swatch--not-surveyed" : ""
+                      }`}
+                      style={isNotSurveyed(cat) ? undefined : { backgroundColor: cat.color, color: cat.textColor }}
                     >
-                      {section["PCI Rating"]}
+                      {isNotSurveyed(cat) ? "—" : section["PCI Rating"]}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-foreground text-sm font-medium font-mono truncate">

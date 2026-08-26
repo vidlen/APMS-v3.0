@@ -76,6 +76,7 @@ export default function SectionEditorTable({ year, onEditUnits }: SectionEditorT
           <TableHead>Type</TableHead>
           <TableHead>PCN</TableHead>
           <TableHead className="text-right">PCI</TableHead>
+          <TableHead>Status</TableHead>
           <TableHead className="w-32" />
           <TableHead className="w-28" />
         </TableRow>
@@ -110,17 +111,23 @@ export default function SectionEditorTable({ year, onEditUnits }: SectionEditorT
                     className="tabular-nums text-muted-foreground"
                     title="Computed from sample-unit scores"
                   >
-                    {s["PCI Rating"]}
+                    {s["PCI Rating"] ?? "—"}
                   </span>
                 ) : (
                   <Input
-                    key={`${year}-${s.Section}-${s["PCI Rating"]}`}
-                    defaultValue={s["PCI Rating"]}
+                    key={`${year}-${s.Section}-${s["PCI Rating"] ?? ""}`}
+                    defaultValue={s["PCI Rating"] ?? ""}
+                    placeholder="—"
                     className="h-8 w-20 ml-auto text-right tabular-nums"
                     onBlur={(e) => handleSave(s.Section, e.target.value)}
                     onKeyDown={saveOnEnter}
                   />
                 )}
+              </TableCell>
+              <TableCell>
+                <span className="text-xs text-muted-foreground">
+                  {s["PCI Rating"] !== undefined ? "Surveyed" : "Not surveyed"}
+                </span>
               </TableCell>
               <TableCell>
                 <SectionInventoryDialog

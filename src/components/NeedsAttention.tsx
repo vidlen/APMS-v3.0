@@ -15,11 +15,16 @@ const MAX_ITEMS = 5;
 const OK_LABELS = new Set(["Satisfactory", "Good"]);
 
 export default function NeedsAttention({ sections, onSelect, onShowBelowSatisfactory }: NeedsAttentionProps) {
-  const flagged = sections
-    .map((section) => {
-      const pci = parsePCIValue(section["PCI Rating"]);
-      return { section, pci, category: getPCICategory(pci) };
-    })
+  const scored = sections.map((section) => ({ section, pci: parsePCIValue(section["PCI Rating"]) }));
+
+  // Not Surveyed branches are excluded from the ranked list (decision 1) -
+  // filtered explicitly rather than relying on OK_LABELS, which would let
+  // them THROUGH (their category label is neither Satisfactory nor Good).
+  const notSurveyedCount = scored.filter((s) => s.pci === null).length;
+
+  const flagged = scored
+    .filter((s): s is { section: SectionData; pci: number } => s.pci !== null)
+    .map((s) => ({ ...s, category: getPCICategory(s.pci) }))
     .filter((s) => !OK_LABELS.has(s.category.label))
     .sort((a, b) => a.pci - b.pci);
 
@@ -34,8 +39,13 @@ export default function NeedsAttention({ sections, onSelect, onShowBelowSatisfac
           Needs attention
         </h2>
         <p className="text-muted-foreground text-xs">
-          All sections are Satisfactory condition or better.
+          All surveyed sections are Satisfactory condition or better.
         </p>
+        {notSurveyedCount > 0 && (
+          <p className="text-muted-foreground/70 text-[11px] mt-1.5">
+            {notSurveyedCount} branches not surveyed
+          </p>
+        )}
       </div>
     );
   }
@@ -82,6 +92,11 @@ export default function NeedsAttention({ sections, onSelect, onShowBelowSatisfac
         >
           +{remaining} more section{remaining === 1 ? "" : "s"} below {pciCategories.at(-2)?.label}
         </button>
+      )}
+      {notSurveyedCount > 0 && (
+        <p className="text-muted-foreground/70 text-[11px] mt-2 text-center">
+          {notSurveyedCount} branches not surveyed
+        </p>
       )}
     </div>
   );

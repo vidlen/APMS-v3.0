@@ -1,23 +1,6 @@
 import { useState } from "react";
 import { BookOpen, ChevronDown } from "lucide-react";
 import { DOMINANT_DISTRESS_METRIC } from "@/config/riskScales";
-import { REHAB_METHODOLOGY, REHAB_TRIGGER_PCI } from "@/lib/rehab";
-
-// Alberti Table 12's PCI-triggered treatment ladder, transcribed once here
-// for the comparison below - not imported, because it belongs to a road PMS
-// this app has no dependency on. REHAB_METHODOLOGY (rehab.ts) is the real,
-// live config; this is read-only reference data for the citation.
-//
-// Ordered most-severe-first to match REHAB_METHODOLOGY's own order (its
-// comment: "most severe first so a branch matches exactly one row") - zipping
-// the two arrays by index only lines up the right rows if both start from the
-// same end of the severity scale.
-const ALBERTI_TABLE_12 = [
-  { treatment: "Major rehabilitation", pciRange: "0–50" },
-  { treatment: "Minor rehabilitation", pciRange: "51–72" },
-  { treatment: "Routine maintenance", pciRange: "73–84" },
-  { treatment: "Preventive maintenance", pciRange: "85–92" },
-];
 
 const METRIC_LABEL: Record<string, string> = {
   count: "record count",
@@ -25,10 +8,9 @@ const METRIC_LABEL: Record<string, string> = {
   severity_area: "severity x area",
 };
 
-// Section 8 (riskScales.ts) plus rehab.ts's own treatment ladder, read out as
-// prose rather than as a second bibliography - the citations themselves live
-// as comments in the config files, this panel is the "why" a defence would
-// actually be asked about.
+// Section 8 (riskScales.ts) read out as prose rather than as a second
+// bibliography - the citations themselves live as comments in the config
+// files, this panel is the "why" a defence would actually be asked about.
 export default function RiskMethodologyPanel() {
   const [open, setOpen] = useState(false);
 
@@ -98,48 +80,6 @@ export default function RiskMethodologyPanel() {
               framing - grouping distresses by the failure mode they drive on aircraft operations
               rather than by pavement-engineering family (see the hazard-class comments in{" "}
               <code className="font-mono">riskScales.ts</code>) - not his numbers.
-            </p>
-          </div>
-
-          <div>
-            <p className="text-foreground font-semibold text-[11px] uppercase tracking-wide mb-2">
-              A literature cross-check: Alberti &amp; Fiori (2019)
-            </p>
-            <p className="mb-2">
-              Alberti &amp; Fiori&apos;s road-PMS treatment ladder (Table 12) triggers on PCI, the same
-              signal APMS&apos;s rehabilitation plan uses. APMS is materially more conservative -
-              treatment triggers earlier in the PCI range across the board:
-            </p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[11px] border-collapse">
-                <thead>
-                  <tr className="text-left text-[10px] uppercase tracking-wide">
-                    <th className="pb-1.5 pr-4 font-medium">Alberti Table 12</th>
-                    <th className="pb-1.5 pr-4 font-medium">PCI range</th>
-                    <th className="pb-1.5 pr-4 font-medium">APMS (rehab.ts)</th>
-                    <th className="pb-1.5 font-medium">PCI ceiling</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ALBERTI_TABLE_12.map((row, i) => (
-                    <tr key={row.treatment} className="border-t border-border/60">
-                      <td className="py-1.5 pr-4 text-foreground/90">{row.treatment}</td>
-                      <td className="py-1.5 pr-4 font-mono tabular-nums">{row.pciRange}</td>
-                      <td className="py-1.5 pr-4 text-foreground/90">
-                        {REHAB_METHODOLOGY[i]?.treatment ?? "—"}
-                      </td>
-                      <td className="py-1.5 font-mono tabular-nums">
-                        {REHAB_METHODOLOGY[i] ? `≤ ${REHAB_METHODOLOGY[i].maxPci}` : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="mt-2">
-              A branch stays untreated until PCI {REHAB_TRIGGER_PCI} or below here, against Alberti&apos;s
-              85 for the equivalent first-tier treatment. Reported as a comparison for the results
-              chapter - it changes nothing in <code className="font-mono">rehab.ts</code>.
             </p>
           </div>
         </div>

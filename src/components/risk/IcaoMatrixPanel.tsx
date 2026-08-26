@@ -1,10 +1,11 @@
 import { useMemo } from "react";
-import type { BranchRiskResult } from "@/lib/risk";
+import type { IcaoAssessment } from "@/lib/icao";
 import { zoneFor } from "@/lib/icao";
 import { LF_TO_ICAO_PROBABILITY, C_TO_ICAO_SEVERITY, ICAO_ZONES } from "@/config/icaoMatrix";
 
 interface IcaoMatrixPanelProps {
-  results: BranchRiskResult[];
+  /** Only `icao` is read - any scored result works, branch- or unit-level. */
+  results: { icao: IcaoAssessment }[];
   selectedCell: string | null;
   onSelectCell: (cell: string | null) => void;
 }

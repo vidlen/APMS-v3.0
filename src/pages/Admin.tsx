@@ -8,19 +8,16 @@ import YearManager from "@/components/admin/YearManager";
 import SectionEditorTable from "@/components/admin/SectionEditorTable";
 import SampleUnitTable from "@/components/admin/SampleUnitTable";
 import ImportExportPanel from "@/components/admin/ImportExportPanel";
-import RiskInventoryTable from "@/components/admin/RiskInventoryTable";
 import RepairLogPanel from "@/components/admin/RepairLogPanel";
-import RehabInventoryTable from "@/components/admin/RehabInventoryTable";
 
-type AdminTab = "pci" | "rehab" | "risk";
+type AdminTab = "pci" | "risk";
 
-// shortLabel keeps all 3 tabs on one line on narrow viewports - see the same
+// shortLabel keeps both tabs on one line on narrow viewports - see the same
 // fix on Home.tsx's WORKSPACE_TABS for why (full labels overflowed a 375px
 // tab bar with no scroll affordance).
 const ADMIN_TABS: { id: AdminTab; label: string; shortLabel: string }[] = [
   { id: "pci", label: "Pavement Condition Index (PCI)", shortLabel: "PCI" },
   { id: "risk", label: "Risk Management", shortLabel: "Risk" },
-  { id: "rehab", label: "Rehabilitation Plan", shortLabel: "Rehab" },
 ];
 
 export default function Admin() {
@@ -120,31 +117,7 @@ export default function Admin() {
             </>
           )}
 
-          {activeTab === "rehab" && (
-            <div className="panel-surface rounded-lg overflow-hidden">
-              <div className="px-4 py-3 border-b border-border">
-                <h2 className="text-sm font-bold text-foreground">
-                  Rehabilitation Plan — {selectedYear}
-                </h2>
-              </div>
-              <RehabInventoryTable year={selectedYear} />
-            </div>
-          )}
-
-          {activeTab === "risk" && (
-            <>
-              <div className="panel-surface rounded-lg overflow-hidden">
-                <div className="px-4 py-3 border-b border-border">
-                  <h2 className="text-sm font-bold text-foreground">
-                    Risk Inventory — {selectedYear}
-                  </h2>
-                </div>
-                <RiskInventoryTable year={selectedYear} />
-              </div>
-
-              <RepairLogPanel year={selectedYear} />
-            </>
-          )}
+          {activeTab === "risk" && <RepairLogPanel year={selectedYear} />}
         </div>
       </div>
     </div>

@@ -11,7 +11,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeSectionRiskMeta, mergeSectionInventory } from './data-overrides.ts';
+import { mergeSectionRiskMeta, mergeSectionInventory, loadOverrides } from './data-overrides.ts';
 
 test('mergeSectionRiskMeta adds a field to an empty override', () => {
   const result = mergeSectionRiskMeta({}, { role: 'runway' });
@@ -60,4 +60,27 @@ test('mergeSectionInventory clearing every field returns an empty object', () =>
     Dimension: undefined,
   });
   assert.deepEqual(result, {});
+});
+
+// loadOverrides reads from a browser-only `localStorage` global that Node's
+// test runner doesn't provide - a minimal in-memory stub, scoped to this one
+// test, is enough to exercise the whitelist without pulling in a DOM library.
+test('loadOverrides drops an unknown field (sectionRehab, from v2.9) while keeping sectionPci intact', () => {
+  const store = new Map<string, string>();
+  (globalThis as { localStorage?: unknown }).localStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, value),
+    removeItem: (key: string) => void store.delete(key),
+  };
+  try {
+    store.set(
+      'apms-data-overrides-v1',
+      JSON.stringify({ sectionPci: { '2025': { NP1: '70' } }, sectionRehab: { '2025': {} } }),
+    );
+    const result = loadOverrides();
+    assert.deepEqual(result.sectionPci, { '2025': { NP1: '70' } });
+    assert.ok(!('sectionRehab' in result), 'sectionRehab must not survive the whitelist');
+  } finally {
+    delete (globalThis as { localStorage?: unknown }).localStorage;
+  }
 });

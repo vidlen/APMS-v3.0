@@ -12,7 +12,6 @@ import SectionsTable from "@/components/SectionsTable";
 import PciScalePanel from "@/components/PciScalePanel";
 import AdminHeaderControl from "@/components/admin/AdminHeaderControl";
 import RiskTab from "@/components/risk/RiskTab";
-import RehabTab from "@/components/rehab/RehabTab";
 import { usePavementData } from "@/hooks/usePavementData";
 import { usePciScalePanel } from "@/hooks/usePciScalePanel";
 import { countByCondition, pciCategories, parsePCIValue, type SectionData } from "@/lib/pci-utils";
@@ -29,31 +28,14 @@ import { aggregateRepairLog } from "@/lib/repair-log";
 const NARROW_BREAKPOINT = 800;
 const MIN_LOADING_SCREEN_MS = 2000;
 
-type WorkspaceTab = "pci" | "forecast" | "rehab" | "risk";
+type WorkspaceTab = "pci" | "risk";
 
-// shortLabel keeps all 4 tabs on screen at once on narrow viewports - the
-// full labels total ~742px, more than double a 375px screen, leaving the
-// tab bar horizontally scrollable with zero scroll affordance (no arrow, no
-// fade), so "Rehabilitation Plan" and "Risk Management" were effectively
-// undiscoverable there.
 const WORKSPACE_TABS: { id: WorkspaceTab; label: string; shortLabel: string; placeholderCaption?: string }[] = [
   { id: "pci", label: "Pavement Condition Index (PCI)", shortLabel: "PCI" },
-  {
-    id: "forecast",
-    label: "PCI Forecasting",
-    shortLabel: "Forecast",
-    placeholderCaption: "This Feature Still Waiting for ATC Clearance to Take Off",
-  },
   {
     id: "risk",
     label: "Risk Management",
     shortLabel: "Risk",
-    placeholderCaption: "No PCI survey data loaded for this year yet",
-  },
-  {
-    id: "rehab",
-    label: "Rehabilitation Plan",
-    shortLabel: "Rehab",
     placeholderCaption: "No PCI survey data loaded for this year yet",
   },
 ];
@@ -306,7 +288,7 @@ export default function Home() {
               SearchBar out — see the sidebar-top fallback below. Risk scores
               are computed per survey year (lastInspectionYear tracks it), so
               the Risk tab needs the same year switch as PCI. */}
-          {(activeTab === "pci" || activeTab === "risk" || activeTab === "rehab") && !isNarrow && (
+          {(activeTab === "pci" || activeTab === "risk") && !isNarrow && (
             <SurveyYearSelector selectedYear={selectedYear} onYearChange={setSelectedYear} />
           )}
 
@@ -508,13 +490,6 @@ export default function Home() {
             repairLogStats={repairLogAggregate.stats}
           />
         </div>
-      ) : activeTab === "rehab" && showPciData ? (
-        <RehabTab
-          sections={sections}
-          selectedYear={selectedYear}
-          unitsBySection={unitsBySection}
-          repairLogByBranch={repairLogAggregate.byBranch}
-        />
       ) : (
         <div className="relative flex-1 flex items-center justify-center min-h-0 bg-background">
           <div className="text-center space-y-3 max-w-sm px-6">

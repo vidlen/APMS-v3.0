@@ -1,9 +1,10 @@
 import { useRef } from "react";
 import { GripVertical, ChevronDown, ChevronUp } from "lucide-react";
-import { pciCategories, getPCICategory } from "@/lib/pci-utils";
+import { pciCategories, getPCICategory, isNotSurveyed, NOT_SURVEYED } from "@/lib/pci-utils";
 
 interface PciScalePanelProps {
-  pciValue?: number;
+  /** undefined: no branch selected. null: a branch is selected but has no PCI survey. */
+  pciValue?: number | null;
   docked: boolean;
   onToggleDock: () => void;
   pos?: { x: number; y: number } | null;
@@ -29,6 +30,7 @@ export default function PciScalePanel({
   const dragOrigin = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
 
   const activeCategory = pciValue !== undefined ? getPCICategory(pciValue) : null;
+  const isActiveNotSurveyed = activeCategory !== null && isNotSurveyed(activeCategory);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (docked) return;
@@ -140,6 +142,24 @@ export default function PciScalePanel({
               </button>
             );
           })}
+        <div
+          aria-disabled
+          title="Branches with no PCI survey on record"
+          className={`w-full flex items-center gap-2.5 px-2 py-1 rounded-sm text-left ${
+            isActiveNotSurveyed ? "bg-white/10" : ""
+          }`}
+        >
+          <span className="pci-swatch pci-swatch--not-surveyed w-3.5 h-3.5 rounded-sm shrink-0" />
+          <span className="font-mono text-[11px] tabular-nums text-muted-foreground w-[46px] shrink-0 whitespace-nowrap">
+            —
+          </span>
+          <span
+            className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${isActiveNotSurveyed ? "" : "text-muted-foreground"}`}
+            style={isActiveNotSurveyed ? { backgroundColor: NOT_SURVEYED.color, color: NOT_SURVEYED.textColor } : undefined}
+          >
+            {NOT_SURVEYED.label}
+          </span>
+        </div>
       </div>
     </div>
   );

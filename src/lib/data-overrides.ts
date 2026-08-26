@@ -1,7 +1,6 @@
 import type { GeoJSONFeatureCollection } from "@/lib/geojson-types";
 import type { BranchRole, Detectability, DistressSeverityLevel } from "@/config/riskScales";
 import type { SectionData } from "@/lib/pci-utils";
-import type { RehabTreatment, RehabYear } from "@/lib/rehab";
 import type { RepairLogRecord } from "@/lib/repair-log";
 
 export interface AddedYearMeta {
@@ -43,17 +42,6 @@ export interface SectionRiskMetaOverride {
   lfcOverride?: LfcOverride;
 }
 
-// Per-branch rehabilitation plan fields (Admin -> Rehabilitation Plan). Same
-// demo-override status as sectionRiskMeta above: computeRehabPlan (rehab.ts)
-// falls back to its computed treatment/priorityYear/dummy cost when a field
-// here is absent, never a hard failure.
-export interface SectionRehabOverride {
-  treatment?: RehabTreatment;
-  priorityYear?: RehabYear;
-  /** Planning-level placeholder cost in IDR - see rehab.ts, not a real estimate. */
-  costIdr?: number;
-}
-
 // A correction to the base GeoJSON's own inventory fields (pavement type,
 // PCN, dimension, last major construction year) - same field names as
 // SectionData, so applying it is a plain spread onto feature.properties.
@@ -73,7 +61,6 @@ export interface DataOverrides {
   uploadedUnits: Record<string, Record<string, GeoJSONFeatureCollection>>;
   sectionRiskMeta: Record<string, Record<string, SectionRiskMetaOverride>>;
   sectionInventory: Record<string, Record<string, SectionInventoryOverride>>;
-  sectionRehab: Record<string, Record<string, SectionRehabOverride>>;
   /**
    * Admin-imported repair log (Admin -> Repair Log, brief section 6.1),
    * replacing the seeded public/data/repair-log-2025.json wholesale. Not
@@ -110,13 +97,6 @@ export function mergeSectionInventory(
   return mergePatch(existing, patch);
 }
 
-export function mergeSectionRehab(
-  existing: SectionRehabOverride,
-  patch: Partial<SectionRehabOverride>
-): SectionRehabOverride {
-  return mergePatch(existing, patch);
-}
-
 const STORAGE_KEY = "apms-data-overrides-v1";
 
 export function emptyOverrides(): DataOverrides {
@@ -129,7 +109,6 @@ export function emptyOverrides(): DataOverrides {
     uploadedUnits: {},
     sectionRiskMeta: {},
     sectionInventory: {},
-    sectionRehab: {},
   };
 }
 
@@ -138,8 +117,22 @@ export function loadOverrides(): DataOverrides {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return emptyOverrides();
-    const parsed = JSON.parse(raw);
-    return { ...emptyOverrides(), ...parsed };
+    const parsed = JSON.parse(raw) as Partial<DataOverrides> & Record<string, unknown>;
+    const base = emptyOverrides();
+    // Whitelist, not spread: a field this version no longer knows about
+    // (sectionRehab from v2.9) is dropped on load rather than carried forward
+    // and re-saved forever.
+    return {
+      addedYears: parsed.addedYears ?? base.addedYears,
+      removedYears: parsed.removedYears ?? base.removedYears,
+      sectionPci: parsed.sectionPci ?? base.sectionPci,
+      unitScores: parsed.unitScores ?? base.unitScores,
+      uploadedSections: parsed.uploadedSections ?? base.uploadedSections,
+      uploadedUnits: parsed.uploadedUnits ?? base.uploadedUnits,
+      sectionRiskMeta: parsed.sectionRiskMeta ?? base.sectionRiskMeta,
+      sectionInventory: parsed.sectionInventory ?? base.sectionInventory,
+      repairLog: parsed.repairLog as RepairLogRecord[] | undefined,
+    };
   } catch {
     return emptyOverrides();
   }

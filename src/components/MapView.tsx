@@ -11,15 +11,11 @@ import { Style, Fill, Stroke, Text } from "ol/style";
 import { Zoom, Attribution } from "ol/control";
 import type { FeatureLike } from "ol/Feature";
 import type { SectionData } from "@/lib/pci-utils";
-import { getPCIStyle, getPCICategory, parsePCIValue } from "@/lib/pci-utils";
+import { getPCIStyle, getPCICategory, parsePCIValue, isNotSurveyed, NOT_SURVEYED } from "@/lib/pci-utils";
+import { notSurveyedPattern } from "@/lib/hatch-pattern";
 import { useEffectiveYearData } from "@/lib/data-store";
 import type { SurveyYear } from "@/lib/survey-years";
-import type { BranchRiskResult } from "@/lib/risk";
-import type { RehabPlanItem } from "@/lib/rehab";
 import "ol/ol.css";
-
-/** Which ramp colors the base polygons. 'pci' is the only mode outside the Risk/Rehab tabs. */
-export type MapColorMode = "pci" | "icao" | "fk" | "rehab";
 
 interface MapViewProps {
   selectedYear: SurveyYear;
@@ -29,12 +25,6 @@ interface MapViewProps {
   onExitDetails: () => void;
   activeBands: Set<string>;
   onClearBands: () => void;
-  /** Defaults to 'pci' - every call site before the Risk tab relied on that being the only mode. */
-  colorMode?: MapColorMode;
-  /** Only read when colorMode is 'icao' or 'fk'. Keyed by branch Section name (brief backlog F). */
-  riskByBranch?: Record<string, BranchRiskResult>;
-  /** Only read when colorMode is 'rehab'. Keyed by branch Section name, same pattern as riskByBranch. */
-  rehabByBranch?: Record<string, RehabPlanItem>;
 }
 
 const GEOJSON_PROJECTION_OPTS = {
@@ -51,22 +41,6 @@ function withAlpha(rgba: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-// RISK_BANDS/ICAO_ZONES colors are plain hex (#rrggbb); the map fill needs
-// the same translucency as the PCI ramp's rgba fills, so branches on the
-// satellite basemap read the same way regardless of which ramp is active.
-function hexToRgba(hex: string, alpha: number): string {
-  const clean = hex.replace("#", "");
-  const r = parseInt(clean.slice(0, 2), 16);
-  const g = parseInt(clean.slice(2, 4), 16);
-  const b = parseInt(clean.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-// Fallback fill for a branch missing from riskByBranch. Shouldn't happen in
-// practice (every branch scores - see risk-adapter.ts), but the map must not
-// throw if a race between tab-switch and re-scoring briefly leaves a gap.
-const RISK_FALLBACK_COLOR = "#9ca3af";
-
 export default function MapView({
   selectedYear,
   onFeatureClick,
@@ -75,9 +49,6 @@ export default function MapView({
   onExitDetails,
   activeBands,
   onClearBands,
-  colorMode = "pci",
-  riskByBranch,
-  rehabByBranch,
 }: MapViewProps) {
   const { sectionsFC, unitsBySection } = useEffectiveYearData(selectedYear);
   const mapRef = useRef<HTMLDivElement>(null);
@@ -87,24 +58,10 @@ export default function MapView({
   const unitsLayerRef = useRef<VectorLayer | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const detailedSectionRef = useRef<string | null>(null);
-  // The pointermove handler below is registered once, inside the mount-only
-  // effect (empty deps, same as detailedSectionRef's reason for existing) -
-  // colorMode/riskByBranch can change after mount when the ramp toggle is
-  // used, so the tooltip reads them through refs rather than closing over
-  // stale values.
-  const colorModeRef = useRef<MapColorMode>(colorMode);
-  const riskByBranchRef = useRef<Record<string, BranchRiskResult> | undefined>(riskByBranch);
-  const rehabByBranchRef = useRef<Record<string, RehabPlanItem> | undefined>(rehabByBranch);
 
   useEffect(() => {
     detailedSectionRef.current = detailedSection;
   }, [detailedSection]);
-
-  useEffect(() => {
-    colorModeRef.current = colorMode;
-    riskByBranchRef.current = riskByBranch;
-    rehabByBranchRef.current = rehabByBranch;
-  }, [colorMode, riskByBranch, rehabByBranch]);
 
   // Style function for base pavement features
   const styleFunction = useCallback(
@@ -119,39 +76,26 @@ export default function MapView({
         return new Style({});
       }
 
-      if (colorMode !== "pci") {
-        // Risk/Rehab color modes: the ramp color is looked up per branch. No
-        // PCI band dimming here - `activeBands` is a PCI-tab-only filter
-        // concept and neither the Risk nor Rehab tab sets it.
-        let hex: string;
-        if (colorMode === "rehab") {
-          hex = rehabByBranch?.[sectionName]?.color ?? RISK_FALLBACK_COLOR;
-        } else {
-          const result = riskByBranch?.[sectionName];
-          hex = result ? (colorMode === "icao" ? result.icao.zoneColor : result.band.color) : RISK_FALLBACK_COLOR;
-        }
-        return new Style({
-          fill: new Fill({ color: hexToRgba(hex, 0.72) }),
-          stroke: new Stroke({
-            color: isSelected ? "rgba(255,255,255,0.95)" : "rgba(35,35,35,0.7)",
-            width: isSelected ? 2.5 : 1,
-          }),
-        });
-      }
-
-      const pciValue = parsePCIValue(props["PCI Rating"] || "0");
+      const pciValue = parsePCIValue(props["PCI Rating"] as string | undefined);
       const style = getPCIStyle(pciValue);
+      const category = getPCICategory(pciValue);
 
       // When the legend filter is active, dim sections outside the chosen
       // condition band(s) so the matching ones stand out. Selection always
-      // wins over dimming, so a selected section stays fully highlighted.
-      const category = getPCICategory(pciValue);
-      const isDimmed = activeBands.size > 0 && !activeBands.has(category.label);
+      // wins over dimming, so a selected section stays fully highlighted. A
+      // Not Surveyed branch is outside the PCI scale entirely, so the band
+      // filter never dims it, regardless of which bands are active.
+      const isDimmed =
+        activeBands.size > 0 && !isNotSurveyed(category) && !activeBands.has(category.label);
+
+      const fillColor = style.hatched
+        ? (notSurveyedPattern() ?? NOT_SURVEYED.fillColor)
+        : isDimmed
+          ? withAlpha(style.fill, 0.12)
+          : style.fill;
 
       return new Style({
-        fill: new Fill({
-          color: isDimmed ? withAlpha(style.fill, 0.12) : style.fill,
-        }),
+        fill: new Fill({ color: fillColor }),
         stroke: new Stroke({
           color: isSelected
             ? "rgba(255,255,255,0.95)"
@@ -162,14 +106,15 @@ export default function MapView({
         }),
       });
     },
-    [selectedSection, detailedSection, activeBands, colorMode, riskByBranch, rehabByBranch]
+    [selectedSection, detailedSection, activeBands]
   );
 
   // Style function for sample-unit features
   const unitStyleFunction = useCallback(
     (feature: FeatureLike) => {
       const props = feature.getProperties();
-      const pciValue = Number(props["pci_score"]);
+      const rawScore = Number(props["pci_score"]);
+      const pciValue = Number.isFinite(rawScore) ? rawScore : null;
       const style = getPCIStyle(pciValue);
       const isSelected =
         selectedSection?.sampleUnit === props["sampleUnit"] &&
@@ -300,29 +245,17 @@ export default function MapView({
         map.getViewport().style.cursor = "pointer";
         tooltipEl.style.display = "block";
         if (props["sampleUnit"] !== undefined) {
-          // Sample units are only ever shown under the PCI ramp (drilling
-          // into a runway's units isn't part of the risk register), so this
-          // stays PCI-labeled regardless of colorModeRef.
-          const pciValue = Number(props["pci_score"]);
+          const rawScore = Number(props["pci_score"]);
+          const pciValue = Number.isFinite(rawScore) ? rawScore : null;
           const label = getPCICategory(pciValue).label;
-          tooltipEl.innerHTML = `<strong>Sample Unit <span class="font-mono">${props["sampleUnit"]}</span></strong> &middot; PCI: <span class="font-mono">${pciValue.toFixed(2)}</span> &middot; ${label}`;
-        } else if (colorModeRef.current === "rehab") {
-          const sectionName = props["Section"];
-          const item = rehabByBranchRef.current?.[sectionName];
-          tooltipEl.innerHTML = item
-            ? `<strong class="font-mono">${sectionName}</strong> &middot; ${item.priorityYear} &middot; ${item.treatment}`
-            : `<strong class="font-mono">${sectionName}</strong>`;
-        } else if (colorModeRef.current !== "pci") {
-          const sectionName = props["Section"];
-          const result = riskByBranchRef.current?.[sectionName];
-          tooltipEl.innerHTML = result
-            ? `<strong class="font-mono">${sectionName}</strong> &middot; R <span class="font-mono">${result.riskScore.toFixed(1)}</span> &middot; ${result.icao.cell} ${result.icao.zone}`
-            : `<strong class="font-mono">${sectionName}</strong>`;
+          const pciText = pciValue === null ? "Not surveyed" : pciValue.toFixed(2);
+          tooltipEl.innerHTML = `<strong>Sample Unit <span class="font-mono">${props["sampleUnit"]}</span></strong> &middot; PCI: <span class="font-mono">${pciText}</span> &middot; ${label}`;
         } else {
           const sectionName = props["Section"];
-          const pci = props["PCI Rating"];
-          const label = getPCICategory(parsePCIValue(pci)).label;
-          tooltipEl.innerHTML = `<strong class="font-mono">${sectionName}</strong> &middot; PCI: <span class="font-mono">${pci}</span> &middot; ${label}`;
+          const pciValue = parsePCIValue(props["PCI Rating"] as string | undefined);
+          const label = getPCICategory(pciValue).label;
+          const pciText = pciValue === null ? "Not surveyed" : props["PCI Rating"];
+          tooltipEl.innerHTML = `<strong class="font-mono">${sectionName}</strong> &middot; PCI: <span class="font-mono">${pciText}</span> &middot; ${label}`;
         }
         const evt = e.originalEvent as PointerEvent;
         tooltipEl.style.left = evt.pageX + 12 + "px";

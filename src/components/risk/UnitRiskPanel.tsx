@@ -1,27 +1,22 @@
 import { useMemo, useState } from "react";
 import { Info, Wrench } from "lucide-react";
-import { usePavementData } from "@/hooks/usePavementData";
 import type { SurveyYear } from "@/lib/survey-years";
-import { toUnitRiskInputs } from "@/lib/risk-unit-adapter";
-import { scoreUnits, type UnitRiskResult, type Zone } from "@/lib/risk-unit";
+import { type UnitRiskResult, type Zone } from "@/lib/risk-unit";
 import type { ObservedRateClass } from "@/lib/observed-rate";
 import { RISK_BANDS } from "@/config/riskScales";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 interface UnitRiskPanelProps {
   selectedYear: SurveyYear;
+  results: UnitRiskResult[];
+  loading: boolean;
+  /** Set by clicking a cell in IcaoMatrixPanel above - narrows the table to
+   *  that cell, on top of whatever the panel's own filters already exclude. */
+  selectedCell: string | null;
+  onClearCellFilter: () => void;
 }
-
-// Metode B only has real per-unit distress + PCI for these two branches
-// (metode-b-spec_4.md section 0.6) - every other branch has no sample-unit
-// collection to score at all, so the panel is scoped to a choice between them.
-const RUNWAY_OPTIONS: { id: string; label: string }[] = [
-  { id: "06/24", label: "RWY 06/24" },
-  { id: "07L/25R", label: "RWY 07L/25R" },
-];
 
 const ZONE_LABELS: Record<Zone, string> = { ujung: "End", tengah: "Middle" };
 
@@ -39,26 +34,19 @@ const RATE_COLORS: Record<ObservedRateClass, string> = {
   tidak_terdefinisi: "#6b7280",
 };
 
-export default function UnitRiskPanel({ selectedYear }: UnitRiskPanelProps) {
-  const [branchId, setBranchId] = useState<string>(RUNWAY_OPTIONS[0].id);
+export default function UnitRiskPanel({
+  selectedYear,
+  results,
+  loading,
+  selectedCell,
+  onClearCellFilter,
+}: UnitRiskPanelProps) {
   const [zoneFilter, setZoneFilter] = useState<"all" | Zone>("all");
   const [degreeFilter, setDegreeFilter] = useState<"all" | number>("all");
   const [rateFilter, setRateFilter] = useState<"all" | ObservedRateClass>("all");
   // Section 0.6.2: dummy-PCI rows must be clearly marked AND filterable out -
   // defaults to hidden since a thesis-facing table should default to real data.
   const [hideDummyPci, setHideDummyPci] = useState(true);
-
-  const previousYear = String(Number(selectedYear) - 1);
-  const { unitsBySection, loading } = usePavementData(selectedYear);
-  const { unitsBySection: previousUnitsBySection } = usePavementData(previousYear);
-
-  const results: UnitRiskResult[] = useMemo(() => {
-    const currentFc = unitsBySection[branchId];
-    if (!currentFc) return [];
-    const previousFc = previousUnitsBySection[branchId];
-    const inputs = toUnitRiskInputs(branchId, "runway", Number(selectedYear), currentFc, previousFc);
-    return scoreUnits(inputs);
-  }, [branchId, selectedYear, unitsBySection, previousUnitsBySection]);
 
   const rows = useMemo(
     () =>
@@ -67,9 +55,10 @@ export default function UnitRiskPanel({ selectedYear }: UnitRiskPanelProps) {
         if (zoneFilter !== "all" && r.zone !== zoneFilter) return false;
         if (degreeFilter !== "all" && r.band.degree !== degreeFilter) return false;
         if (rateFilter !== "all" && r.observedRateClass !== rateFilter) return false;
+        if (selectedCell && r.icao.cell !== selectedCell) return false;
         return true;
       }),
-    [results, hideDummyPci, zoneFilter, degreeFilter, rateFilter],
+    [results, hideDummyPci, zoneFilter, degreeFilter, rateFilter, selectedCell],
   );
 
   const degreeCounts = useMemo(() => {
@@ -91,7 +80,7 @@ export default function UnitRiskPanel({ selectedYear }: UnitRiskPanelProps) {
   if (results.length === 0) {
     return (
       <div className="text-sm text-muted-foreground px-4 py-10 text-center">
-        No sample-unit data for {branchId} in {selectedYear}.
+        No sample-unit data for this runway in {selectedYear}.
       </div>
     );
   }
@@ -99,14 +88,6 @@ export default function UnitRiskPanel({ selectedYear }: UnitRiskPanelProps) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <ToggleGroup type="single" variant="outline" size="sm" value={branchId} onValueChange={(v) => v && setBranchId(v)}>
-          {RUNWAY_OPTIONS.map((r) => (
-            <ToggleGroupItem key={r.id} value={r.id}>
-              {r.label}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-
         <div className="flex flex-wrap items-center gap-2">
           <Select value={zoneFilter} onValueChange={(v) => setZoneFilter(v as "all" | Zone)}>
             <SelectTrigger className="h-8 w-28 text-xs">
@@ -161,6 +142,15 @@ export default function UnitRiskPanel({ selectedYear }: UnitRiskPanelProps) {
           >
             {hideDummyPci ? "Dummy PCI hidden" : "Dummy PCI shown"}
           </button>
+
+          {selectedCell && (
+            <button
+              onClick={onClearCellFilter}
+              className="h-8 px-3 rounded-md text-xs font-medium border border-primary text-primary bg-primary/10"
+            >
+              Cell {selectedCell} &middot; Clear
+            </button>
+          )}
         </div>
       </div>
 

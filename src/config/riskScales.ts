@@ -179,43 +179,6 @@ export const RISK_BANDS: RiskBand[] = [
  * ========================================================================== */
 
 /**
- * TIER 1 - preferred. Markov chain probability that the branch enters a
- * trigger condition state within the planning horizon, mapped onto the
- * Fine-Kinney likelihood scale.
- *
- * Bands are geometric rather than linear, because the Fine-Kinney scale is
- * itself geometric (0.1 / 0.2 / 0.5 / 1 / 3 / 6 / 10).
- */
-export const MARKOV_PROBABILITY_TO_LIKELIHOOD = [
-  { maxProbability: 0.02, likelihood: 0.1 },
-  { maxProbability: 0.05, likelihood: 0.2 },
-  { maxProbability: 0.1, likelihood: 0.5 },
-  { maxProbability: 0.25, likelihood: 1 },
-  { maxProbability: 0.5, likelihood: 3 },
-  { maxProbability: 0.8, likelihood: 6 },
-  { maxProbability: 1.0, likelihood: 10 },
-] as const;
-
-/**
- * TIER 2 and TIER 3 fallback. Maps a PCI value to a likelihood level.
- * Tier 2 feeds this the forecast PCI from a deterioration curve.
- * Tier 3 feeds it today's surveyed PCI.
- *
- * Band edges follow the ASTM D5340 rating classes [4] where they align, and
- * split the Good class (86-100) into three so the scale is not compressed at
- * the top, where most SHIA branches currently sit.
- */
-export const PCI_TO_LIKELIHOOD = [
-  { minPci: 95, likelihood: 0.1 }, // Good, near new
-  { minPci: 86, likelihood: 0.2 }, // Good
-  { minPci: 81, likelihood: 0.5 }, // Upper Satisfactory
-  { minPci: 71, likelihood: 1 }, //   Satisfactory
-  { minPci: 56, likelihood: 3 }, //   Fair
-  { minPci: 41, likelihood: 6 }, //   Poor
-  { minPci: 0, likelihood: 10 }, //   Very Poor and below
-] as const;
-
-/**
  * Data-quality escalation. A branch last inspected years ago carries more
  * uncertainty than one surveyed this year, so its likelihood is raised.
  * This is the clause that absorbs the 06/24 data-quality problem into the
@@ -432,21 +395,7 @@ export const DETECTABILITY_ESCALATION: Record<Detectability, number> = {
 };
 
 /* =============================================================================
- * 7. PLANNING HORIZON
- * ========================================================================== */
-
-/** Years ahead the Markov forecast looks when deriving likelihood. */
-export const PLANNING_HORIZON_YEARS = 5;
-
-/**
- * PCI at or below which a branch is considered to have reached a trigger
- * state. Matches the first rehabilitation trigger already used in the
- * Rehabilitation Plan tab (seal coat at PCI 80).
- */
-export const TRIGGER_STATE_PCI = 80;
-
-/* =============================================================================
- * 8. REPAIR LOG: FACILITY JOIN, DISTRESS ALIASES, DOMINANT-DISTRESS METRIC
+ * 7. REPAIR LOG: FACILITY JOIN, DISTRESS ALIASES, DOMINANT-DISTRESS METRIC
  *
  * Until v2.8 only 2 of 75 branches had a recorded dominant distress, so 73
  * scored hazard class 'other' and drew their consequence from the bottom

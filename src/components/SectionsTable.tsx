@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Search, ArrowUp, ArrowDown, ArrowUpDown, X } from "lucide-react";
 import type { SectionData } from "@/lib/pci-utils";
-import { parsePCIValue, getPCICategory } from "@/lib/pci-utils";
+import { parsePCIValue, getPCICategory, isNotSurveyed } from "@/lib/pci-utils";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -65,13 +65,21 @@ export default function SectionsTable({
 
     const dir = sortDir === "asc" ? 1 : -1;
     return filtered.slice().sort((a, b) => {
-      if (sortKey === "PCI") {
-        return (parsePCIValue(a["PCI Rating"]) - parsePCIValue(b["PCI Rating"])) * dir;
-      }
-      if (sortKey === "Condition") {
-        const la = getPCICategory(parsePCIValue(a["PCI Rating"])).label;
-        const lb = getPCICategory(parsePCIValue(b["PCI Rating"])).label;
-        return la.localeCompare(lb) * dir;
+      if (sortKey === "PCI" || sortKey === "Condition") {
+        const pa = parsePCIValue(a["PCI Rating"]);
+        const pb = parsePCIValue(b["PCI Rating"]);
+        // Unsurveyed always sinks to the bottom, in both directions: it is
+        // not a low value and not a high value, so it must not travel with
+        // the sort direction.
+        if (pa === null && pb === null) return a.Section.localeCompare(b.Section);
+        if (pa === null) return 1;
+        if (pb === null) return -1;
+        if (sortKey === "Condition") {
+          const la = getPCICategory(pa).label;
+          const lb = getPCICategory(pb).label;
+          return la.localeCompare(lb) * dir;
+        }
+        return (pa - pb) * dir;
       }
       return String(a[sortKey]).localeCompare(String(b[sortKey])) * dir;
     });
@@ -201,12 +209,18 @@ export default function SectionsTable({
                   {section.PCN}
                 </TableCell>
                 <TableCell className="p-1.5">
-                  <span
-                    className="pci-swatch inline-flex items-center justify-center min-w-9 px-1.5 h-6 rounded text-xs font-bold font-mono tabular-nums"
-                    style={{ backgroundColor: cat.color, color: cat.textColor }}
-                  >
-                    {section["PCI Rating"]}
-                  </span>
+                  {isNotSurveyed(cat) ? (
+                    <span className="pci-swatch pci-swatch--not-surveyed inline-flex items-center justify-center min-w-9 px-1.5 h-6 rounded text-xs font-bold">
+                      —
+                    </span>
+                  ) : (
+                    <span
+                      className="pci-swatch inline-flex items-center justify-center min-w-9 px-1.5 h-6 rounded text-xs font-bold font-mono tabular-nums"
+                      style={{ backgroundColor: cat.color, color: cat.textColor }}
+                    >
+                      {section["PCI Rating"]}
+                    </span>
+                  )}
                 </TableCell>
                 <TableCell className="p-1.5 text-xs text-muted-foreground">{cat.label}</TableCell>
               </TableRow>

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { ArrowRight } from "lucide-react";
 import type { SectionData } from "@/lib/pci-utils";
-import { pciCategories, countByCondition, averagePci } from "@/lib/pci-utils";
+import { pciCategories, countByCondition, averagePci, NOT_SURVEYED } from "@/lib/pci-utils";
 
 interface StatsBarProps {
   sections: SectionData[];
@@ -11,11 +11,16 @@ interface StatsBarProps {
 export default function StatsBar({ sections, onOpenTable }: StatsBarProps) {
   const stats = useMemo(() => {
     const total = sections.length;
-    const avgPCI = averagePci(sections);
+    const summary = averagePci(sections);
     const counts = countByCondition(sections);
-    const dominant = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+    // Restricted to the seven PCI bands: Object.entries(counts) would also
+    // pick up Not Surveyed, which has the highest count on this network but
+    // is not a condition - see countByCondition in pci-utils.ts.
+    const dominant = pciCategories
+      .map((cat) => [cat.label, counts[cat.label] ?? 0] as const)
+      .sort((a, b) => b[1] - a[1])[0];
 
-    return { total, avgPCI: avgPCI.toFixed(1), dominant: dominant?.[0] || "N/A", counts };
+    return { total, summary, dominant: dominant && dominant[1] > 0 ? dominant[0] : "—", counts };
   }, [sections]);
 
   // Read from the frozen ramp rather than hardcoding the hex, so this can
@@ -48,9 +53,12 @@ export default function StatsBar({ sections, onOpenTable }: StatsBarProps) {
             className="font-mono text-lg font-bold tabular-nums leading-tight text-foreground"
             style={satisfactoryColor ? { color: satisfactoryColor } : undefined}
           >
-            {stats.avgPCI}
+            {stats.summary.mean === null ? "—" : stats.summary.mean.toFixed(1)}
           </div>
           <div className="text-[9px] tracking-[.07em] uppercase text-muted-foreground">Average PCI</div>
+          <div className="text-[9px] text-muted-foreground/70 tabular-nums">
+            {stats.summary.surveyed} of {stats.summary.total} surveyed
+          </div>
         </div>
         <div className="flex-1 flex flex-col items-center gap-1 px-2 last:pr-0">
           <div className="font-condensed text-[14px] font-semibold uppercase text-foreground leading-tight text-center truncate w-full">
@@ -60,23 +68,25 @@ export default function StatsBar({ sections, onOpenTable }: StatsBarProps) {
         </div>
       </div>
 
-      {/* Condition distribution across all sections */}
+      {/* Condition distribution — surveyed sections only. Not Surveyed is
+          excluded from the bar itself (it has no condition to plot) but gets
+          its own chip below, set off from the seven condition chips. */}
       <div className="mt-4">
         <div className="h-[9px] rounded-full overflow-hidden flex gap-[2px] bg-border/40">
           {pciCategories.map((cat) => {
             const count = stats.counts[cat.label] ?? 0;
-            if (count === 0 || stats.total === 0) return null;
+            if (count === 0 || stats.summary.surveyed === 0) return null;
             return (
               <div
                 key={cat.label}
                 title={`${cat.label}: ${count}`}
                 className="h-full rounded-full"
-                style={{ width: `${(count / stats.total) * 100}%`, backgroundColor: cat.color }}
+                style={{ width: `${(count / stats.summary.surveyed) * 100}%`, backgroundColor: cat.color }}
               />
             );
           })}
         </div>
-        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
           {pciCategories.map((cat) => {
             const count = stats.counts[cat.label] ?? 0;
             if (count === 0) return null;
@@ -88,6 +98,15 @@ export default function StatsBar({ sections, onOpenTable }: StatsBarProps) {
               </div>
             );
           })}
+          {stats.counts[NOT_SURVEYED.label] > 0 && (
+            <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground pl-3 border-l border-border">
+              <span className="pci-swatch pci-swatch--not-surveyed w-2 h-2 rounded-full shrink-0" />
+              <span className="text-foreground font-medium font-mono tabular-nums">
+                {stats.counts[NOT_SURVEYED.label]}
+              </span>
+              <span>{NOT_SURVEYED.label}</span>
+            </div>
+          )}
         </div>
       </div>
     </div>

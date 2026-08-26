@@ -1,5 +1,5 @@
 import { X, BarChart3, Layers, Grid3x3, Pencil, AlertTriangle } from "lucide-react";
-import { getPCICategory, pciCategories, type SectionData } from "@/lib/pci-utils";
+import { getPCICategory, parsePCIValue, isNotSurveyed, pciCategories, type SectionData } from "@/lib/pci-utils";
 import PciScalePanel from "@/components/PciScalePanel";
 import {
   describePCNPart,
@@ -67,7 +67,7 @@ export default function DetailPanel({
   // stale) selected-section snapshot, so an admin edit reflects here
   // immediately without needing to re-select the section on the map.
   const { sectionsFC, unitsBySection } = useEffectiveYearData(selectedYear);
-  let livePciStr = section["PCI Rating"];
+  let livePciStr: string | undefined = section["PCI Rating"];
   // Left undefined (rather than defaulted to []) when the underlying data has
   // no distress field at all, so the panel can tell "not surveyed for this
   // runway/year" apart from "surveyed, zero distress found" and hide the
@@ -87,12 +87,13 @@ export default function DetailPanel({
       (f) => f.properties["Section"] === section.Section
     );
     if (sectionFeature) {
-      livePciStr = sectionFeature.properties["PCI Rating"] as string;
+      livePciStr = sectionFeature.properties["PCI Rating"] as string | undefined;
     }
   }
 
-  const pciValue = parseFloat(livePciStr);
+  const pciValue = parsePCIValue(livePciStr);
   const category = getPCICategory(pciValue);
+  const notSurveyed = isNotSurveyed(category);
 
   const constructionYear = section["Last Major Construction Year"]
     ? parseConstructionYear(section["Last Major Construction Year"])
@@ -120,7 +121,15 @@ export default function DetailPanel({
 
   const handleSavePci = (raw: string) => {
     const trimmed = raw.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      if (isUnitDetail) {
+        toast.error("A sample unit score cannot be cleared");
+        return;
+      }
+      setSectionPci(selectedYear, section.Section, undefined);
+      toast.success("PCI cleared");
+      return;
+    }
     const num = Number(trimmed);
     if (Number.isNaN(num) || num < 0 || num > 100) {
       toast.error("PCI must be a number between 0 and 100");
@@ -143,13 +152,12 @@ export default function DetailPanel({
       <div className="flex items-center justify-between gap-3 px-5 py-5 border-b border-border">
         <div className="flex items-center gap-4 min-w-0">
           <div
-            className="pci-swatch w-[54px] h-[54px] rounded-md flex items-center justify-center text-xl font-bold font-mono tabular-nums shrink-0"
-            style={{
-              backgroundColor: category.color,
-              color: category.textColor,
-            }}
+            className={`pci-swatch w-[54px] h-[54px] rounded-md flex items-center justify-center text-xl font-bold font-mono tabular-nums shrink-0 ${
+              notSurveyed ? "pci-swatch--not-surveyed" : ""
+            }`}
+            style={notSurveyed ? undefined : { backgroundColor: category.color, color: category.textColor }}
           >
-            {Math.round(pciValue)}
+            {pciValue === null ? "—" : Math.round(pciValue)}
           </div>
           <div className="min-w-0">
             <h2 className="text-foreground font-condensed font-semibold text-[27px] uppercase tracking-[.05em] leading-none truncate">
@@ -221,16 +229,17 @@ export default function DetailPanel({
                 onKeyDown={saveOnEnter}
               />
             ) : (
-              <span className="text-3xl font-bold font-mono text-foreground tabular-nums">{livePciStr}</span>
+              <span className="text-3xl font-bold font-mono text-foreground tabular-nums">
+                {livePciStr ?? "—"}
+              </span>
             )}
             <span
-              className="text-xs font-medium px-2.5 py-1 rounded-full mb-1.5"
-              style={{
-                backgroundColor: category.color,
-                color: category.textColor,
-              }}
+              className={`text-xs font-medium px-2.5 py-1 rounded-full mb-1.5 ${
+                notSurveyed ? "pci-swatch--not-surveyed" : ""
+              }`}
+              style={notSurveyed ? undefined : { backgroundColor: category.color, color: category.textColor }}
             >
-              {category.label}
+              {notSurveyed ? "Not surveyed" : category.label}
             </span>
           </div>
 
@@ -253,14 +262,23 @@ export default function DetailPanel({
               <span className="text-[11px] text-muted-foreground font-mono tabular-nums">100</span>
             </div>
 
-            {/* PCI Marker */}
-            <div
-              className="relative h-4 -mt-5"
-              style={{ left: `${pciValue}%`, transform: "translateX(-50%)" }}
-            >
-              <div className="w-0 h-0 border-l-[5px] border-r-[5px] border-t-[6px] border-l-transparent border-r-transparent border-t-foreground absolute top-0 left-1/2 -translate-x-1/2" />
-            </div>
+            {/* PCI Marker — omitted when unsurveyed, since there is no
+                position on the 0-100 scale to point at. */}
+            {pciValue !== null && (
+              <div
+                className="relative h-4 -mt-5"
+                style={{ left: `${pciValue}%`, transform: "translateX(-50%)" }}
+              >
+                <div className="w-0 h-0 border-l-[5px] border-r-[5px] border-t-[6px] border-l-transparent border-r-transparent border-t-foreground absolute top-0 left-1/2 -translate-x-1/2" />
+              </div>
+            )}
           </div>
+
+          {notSurveyed && (
+            <p className="text-muted-foreground text-xs mt-3">
+              No PCI survey on record for this branch.
+            </p>
+          )}
         </section>
 
         {/* Distress Details — per sample-unit only; sections without
