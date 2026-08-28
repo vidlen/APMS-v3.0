@@ -2,9 +2,12 @@
  * risk-unit-adapter.test.ts
  * -----------------------------------------------------------------------------
  * Pins the adapter's data-authenticity and derived-field logic against the
- * real 06/24 sample-unit files - the values metode-b-spec_4.md itself cites
- * as ground truth (section 7.3's "65 of 300 units", section 0.6's pciIsReal
- * split).
+ * real 06/24 sample-unit files - section 0.6's pciIsReal split, plus the
+ * repaired-unit count, corrected 2026-08-28 after fixing a sample-unit
+ * numbering mismatch between the 2025 and 2026 06/24 survey files (the 2026
+ * squares had been walked/labelled in the opposite direction along the
+ * runway; metode-b-spec_4.md section 7.3's "65 of 300 units" was computed
+ * against that pre-fix data and is stale).
  * -----------------------------------------------------------------------------
  */
 
@@ -33,12 +36,12 @@ test('polygonAreaM2 on a real 06/24 unit polygon lands in the surveyed 586-604 m
   assert.ok(area > 585 && area < 605, `expected ~586-604 m2, got ${area}`);
 });
 
-test('exactly 65 of 300 06/24 units are flagged repairedSincePrevious (2025 -> 2026)', () => {
+test('exactly 68 of 300 06/24 units are flagged repairedSincePrevious (2025 -> 2026)', () => {
   const fc2026 = loadFc('../../public/data/runway-06-24-units-2026.json');
   const fc2025 = loadFc('../../public/data/runway-06-24-units-2025.json');
   const inputs = toUnitRiskInputs('06/24', 'runway', 2026, fc2026, fc2025);
   const repaired = inputs.filter((i) => i.repairedSincePrevious).length;
-  assert.equal(repaired, 65);
+  assert.equal(repaired, 68);
 });
 
 test('every unit from the real-PCI branch is flagged pciIsReal, and carries a defined previousPci', () => {
