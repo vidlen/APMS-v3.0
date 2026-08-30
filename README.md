@@ -5,7 +5,6 @@ This project is created as a part of thesis defense for Author
 
 This version of APMS is created for public use and view	
 
-DUMMY DATA IS USED IN THIS PUBLIC REPOSITORY - DOES NOT REFLECT REAL PAVEMENT CONDITIONS
 
 
 # Pavement Condition Index (PCI)
