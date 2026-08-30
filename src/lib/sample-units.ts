@@ -18,6 +18,9 @@ export const SEED_SAMPLE_UNIT_SOURCES: Record<SurveyYear, Record<string, string>
     "07L/25R": "/data/runway-07L-25R-units-2024.json",
   },
   "2023": {},
+  "2020": {
+    "07L/25R": "/data/runway-07L-25R-units-2020.json",
+  },
 };
 
 export interface SampleUnitDistress {
