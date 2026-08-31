@@ -148,8 +148,16 @@ test('pavement-data-2024.json: PCI Rating removed from all 67 features', () => {
   assert.ok(fc.features.every((f) => !('PCI Rating' in f.properties)));
 });
 
-test('pavement-data-2026.json is untouched: still 2 surveyed features with PCI Rating', () => {
+test('pavement-data-2026.json: full 75-branch network, PCI Rating derived live from units (not in the file)', () => {
   const fc = loadJson('../../public/data/pavement-data-2026.json');
-  assert.equal(fc.features.length, 2);
-  assert.ok(fc.features.every((f) => 'PCI Rating' in f.properties));
+  assert.equal(fc.features.length, 75);
+  assert.ok(fc.features.every((f) => !('PCI Rating' in f.properties)));
 });
+
+for (const year of ['2020', '2021', '2022', '2023']) {
+  test(`pavement-data-${year}.json: full 75-branch network, PCI Rating derived live from units (not in the file)`, () => {
+    const fc = loadJson(`../../public/data/pavement-data-${year}.json`);
+    assert.equal(fc.features.length, 75);
+    assert.ok(fc.features.every((f) => !('PCI Rating' in f.properties)));
+  });
+}
