@@ -14,6 +14,8 @@ export const SEED_YEARS: YearMeta[] = [
   { id: "2025", label: "2025", clonedFrom: null },
   { id: "2024", label: "2024", clonedFrom: null },
   { id: "2023", label: "2023", clonedFrom: null },
+  { id: "2022", label: "2022", clonedFrom: null },
+  { id: "2021", label: "2021", clonedFrom: null },
   { id: "2020", label: "2020", clonedFrom: null },
 ];
 
@@ -21,6 +23,9 @@ const SEED_SECTION_URLS: Record<string, string> = {
   "2026": "/data/pavement-data-2026.json",
   "2025": "/data/pavement-data.json",
   "2024": "/data/pavement-data-2024.json",
+  "2023": "/data/pavement-data-2023.json",
+  "2022": "/data/pavement-data-2022.json",
+  "2021": "/data/pavement-data-2021.json",
   "2020": "/data/pavement-data-2020.json",
 };
 
