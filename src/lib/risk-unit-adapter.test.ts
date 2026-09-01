@@ -36,24 +36,41 @@ test('polygonAreaM2 on a real 06/24 unit polygon lands in the surveyed 586-604 m
   assert.ok(area > 585 && area < 605, `expected ~586-604 m2, got ${area}`);
 });
 
-test('exactly 68 of 300 06/24 units are flagged repairedSincePrevious (2025 -> 2026)', () => {
+test('repairedSincePrevious is always false (section 7.4: the patched-area-growth rule is switched off)', () => {
   const fc2026 = loadFc('../../public/data/runway-06-24-units-2026.json');
   const fc2025 = loadFc('../../public/data/runway-06-24-units-2025.json');
-  const inputs = toUnitRiskInputs('06/24', 'runway', 2026, fc2026, fc2025);
+  const inputs = toUnitRiskInputs('06/24', 'runway', 2026, fc2026, fc2025, 2025);
   const repaired = inputs.filter((i) => i.repairedSincePrevious).length;
-  assert.equal(repaired, 68);
+  assert.equal(repaired, 0);
 });
 
-test('every unit from the real-PCI branch is flagged pciIsReal, and carries a defined previousPci', () => {
+test('every unit from the real-PCI branch is flagged pciIsReal, and carries a defined previousPci and previousSurveyYear', () => {
   const fc2026 = loadFc('../../public/data/runway-06-24-units-2026.json');
   const fc2025 = loadFc('../../public/data/runway-06-24-units-2025.json');
-  const inputs = toUnitRiskInputs('06/24', 'runway', 2026, fc2026, fc2025);
+  const inputs = toUnitRiskInputs('06/24', 'runway', 2026, fc2026, fc2025, 2025);
   assert.equal(inputs.length, 300);
   for (const i of inputs) {
     assert.equal(i.pciIsReal, true);
     assert.equal(i.previousPciIsReal, true);
     assert.equal(typeof i.previousPci, 'number');
+    assert.equal(i.previousSurveyYear, 2025);
   }
+});
+
+test('astmConsistent flags exactly one unit across the whole network: 06/24 2025 unit 215', () => {
+  const fc2025 = loadFc('../../public/data/runway-06-24-units-2025.json');
+  const fc2024 = loadFc('../../public/data/runway-06-24-units-2024.json');
+  const fc2026 = loadFc('../../public/data/runway-06-24-units-2026.json');
+  const fcRwy2_2026 = loadFc('../../public/data/runway-07L-25R-units-2026.json');
+
+  const inputs2025 = toUnitRiskInputs('06/24', 'runway', 2025, fc2025, fc2024, 2024);
+  const inputs2026 = toUnitRiskInputs('06/24', 'runway', 2026, fc2026, fc2025, 2025);
+  const inputsRwy2 = toUnitRiskInputs('07L/25R', 'runway', 2026, fcRwy2_2026);
+
+  const flagged = [...inputs2025, ...inputs2026, ...inputsRwy2].filter((i) => !i.astmConsistent);
+  assert.equal(flagged.length, 1);
+  assert.equal(flagged[0].branchId, '06/24');
+  assert.equal(flagged[0].unitNumber, 215);
 });
 
 test('an unrecognised quantityUnits value throws rather than silently converting', () => {

@@ -3,20 +3,22 @@
  * -----------------------------------------------------------------------------
  * Bridges the app's existing sample-unit GeoJSON (SampleUnitProperties, see
  * sample-units.ts) into risk-unit.ts's UnitRiskInput, for the two branches
- * with real per-unit distress and PCI data (metode-b-spec_4.md section 0.6):
+ * with real per-unit distress and PCI data (metode-b-r1-spec.md section 0.6):
  * RWY 06/24 and RWY 07L/25R.
  *
- * DENSITY DIVISOR (section 3.2/8.1):
- *   Raw sample-unit JSON carries no `densityPct` field at all - it has to be
- *   computed here. The naive choice is each unit's own surveyed polygon area
- *   (586-604 m2, see polygonAreaM2 below), but reverse-engineering the
- *   spec's own fixture figures rules that out: unit 16's Raveling High
- *   quantity 4.92 m2 only reproduces the spec's density 0.820 when divided by
- *   a FLAT 600 m2 (4.92 / 600 x 100 = 0.820 exactly; four more fixture
- *   figures match the same divisor to 3-4 decimals). PAVER evidently divides
- *   by the 10m x 60m NOMINAL design area for every unit, not each unit's own
- *   surveyed polygon - so density and area are computed from two different
- *   numbers here, on purpose.
+ * DEDUCT AND COVERAGE (section 3.3, 4.1):
+ *   SampleUnitDistress already carries `deduct` (ASTM D5340, 100% coverage on
+ *   every committed unit-year) - passed through unconverted. The old
+ *   PAVER-density-based `densityPct` this adapter used to compute is gone:
+ *   Likelihood now reads TDV/PCI directly (risk-unit.ts) and Frequency reads
+ *   coveragePct, which works from quantity/quantityUnits itself, not a
+ *   precomputed density. The 600 m2 divisor that used to live here as
+ *   PAVER_DENSITY_DIVISOR_M2 lives on as COVERAGE_DIVISOR_M2 in riskScales.ts,
+ *   same value, same reasoning: it's the 10m x 60m NOMINAL design area PAVER
+ *   itself divides by for density, not each unit's own surveyed polygon
+ *   (586-604 m2) - verified against the fixture figures in metode-b-spec_4.md
+ *   (unit 16's Raveling High 4.92 m2 only reproduces its published density
+ *   0.820 when divided by a flat 600 m2).
  *
  * QUANTITY UNITS (section 3.2, 4.1):
  *   quantity/quantityUnits are passed through unconverted - 'SqM' and 'M' are
@@ -39,14 +41,6 @@ export function isPciReal(branchId: string): boolean {
   return REAL_PCI_BRANCHES.has(branchId);
 }
 
-/** PAVER's own density divisor - the 10m x 60m nominal design area, not the
- *  unit's real surveyed polygon. See the file header. */
-const PAVER_DENSITY_DIVISOR_M2 = 600;
-
-function densityPctFor(quantity: number): number {
-  return (quantity / PAVER_DENSITY_DIVISOR_M2) * 100;
-}
-
 const KNOWN_QUANTITY_UNITS = new Set(['SqM', 'M']);
 const KNOWN_SEVERITIES = new Set(['Low', 'Medium', 'High', 'N/A']);
 
@@ -62,15 +56,23 @@ function toUnitDistress(d: SampleUnitDistress): UnitDistress {
     severity: d.severity as UnitDistress['severity'],
     quantity: d.quantity,
     quantityUnits: d.quantityUnits as UnitDistress['quantityUnits'],
-    densityPct: densityPctFor(d.quantity),
+    deduct: d.deduct,
   };
 }
 
-function totalPatchingAreaM2(distresses: SampleUnitDistress[] | undefined): number {
-  if (!distresses) return 0;
-  return distresses
-    .filter((d) => canonicalise(d.type) === 'PATCHING' && d.quantityUnits === 'SqM')
-    .reduce((sum, d) => sum + d.quantity, 0);
+/**
+ * ASTM D5340 self-consistency guard (section 10): CDV can never be smaller
+ * than the single highest deduct value on a unit, so (100 - PCI) must be at
+ * least as large as max(deduct). A small tolerance absorbs PCI rounding and
+ * float error - see ASTM_TOLERANCE.
+ */
+export const ASTM_TOLERANCE = 0.1;
+
+export function astmConsistent(pci: number, distresses: UnitDistress[]): boolean {
+  if (distresses.length === 0) return true;
+  const maxDeduct = Math.max(...distresses.map((d) => d.deduct));
+  const cdv = 100 - pci;
+  return maxDeduct - cdv <= ASTM_TOLERANCE;
 }
 
 /**
@@ -118,10 +120,18 @@ function zoneFor(unitNumber: number): Zone {
 /**
  * Builds one branch's UnitRiskInput array for one survey year.
  *
- * `previousYearFc` supplies previousPci and repairedSincePrevious (section
- * 7.3: PATCHING area grew versus the previous year) when available; omit it
- * (e.g. no earlier survey) and every unit's rate class naturally resolves to
- * 'tidak_terdefinisi' (observed-rate.ts already requires a defined previousPci).
+ * `previousYearFc`/`previousYear` supply previousPci/previousSurveyYear when
+ * an earlier survey is available; omit both (e.g. no earlier survey) and
+ * every unit's rate class naturally resolves to 'tidak_terdefinisi'
+ * (observed-rate.ts already requires a defined previousPci and previousYear).
+ *
+ * `repairedSincePrevious` is always false (section 7.4): patched-area growth
+ * turned out to correlate with FALLING PCI on this data (units flagged by the
+ * old rule dropped 9.5-14.2 points on average, versus a rise for unflagged
+ * units), so the rule that read it as a repair has been switched off rather
+ * than left running backwards. The field itself stays on UnitRiskInput,
+ * unused, pending a real replacement signal (a repair-log record falling
+ * between the two survey dates).
  */
 export function toUnitRiskInputs(
   branchId: string,
@@ -129,6 +139,7 @@ export function toUnitRiskInputs(
   year: number,
   currentYearFc: GeoJSONFeatureCollection,
   previousYearFc?: GeoJSONFeatureCollection,
+  previousYear?: number,
 ): UnitRiskInput[] {
   const previousByUnit = new Map<number, SampleUnitProperties>();
   if (previousYearFc) {
@@ -145,10 +156,7 @@ export function toUnitRiskInputs(
     const unitNumber = props.sampleUnit;
     const prevProps = previousByUnit.get(unitNumber);
     const { areaM2, isNominal } = resolveUnitArea(feature);
-
-    const repairedSincePrevious = prevProps
-      ? totalPatchingAreaM2(props.distresses) > totalPatchingAreaM2(prevProps.distresses)
-      : false;
+    const distresses = (props.distresses ?? []).map(toUnitDistress);
 
     return {
       branchId,
@@ -159,12 +167,14 @@ export function toUnitRiskInputs(
       areaIsNominal: isNominal,
       surveyYear: year,
       role,
-      distresses: (props.distresses ?? []).map(toUnitDistress),
+      distresses,
       pci: props.pci_score,
       pciIsReal,
       previousPci: prevProps?.pci_score,
       previousPciIsReal: prevProps ? pciIsReal : undefined,
-      repairedSincePrevious,
+      previousSurveyYear: prevProps ? previousYear : undefined,
+      repairedSincePrevious: false,
+      astmConsistent: astmConsistent(props.pci_score, distresses),
     };
   });
 }

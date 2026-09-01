@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Download } from "lucide-react";
 import type { SectionData } from "@/lib/pci-utils";
 import type { SurveyYear } from "@/lib/survey-years";
 import type { GeoJSONFeatureCollection } from "@/lib/geojson-types";
@@ -7,11 +8,14 @@ import type { RepairLogStats } from "@/lib/repair-log";
 import { usePavementData } from "@/hooks/usePavementData";
 import { toUnitRiskInputs } from "@/lib/risk-unit-adapter";
 import { scoreUnits, type UnitRiskResult } from "@/lib/risk-unit";
+import { downloadUnitRiskResultsCsv } from "@/lib/risk-unit-export";
 import { ICAO_GRID_PROVENANCE } from "@/config/icaoMatrix";
+import { DEFAULT_LIKELIHOOD_SOURCE, type LikelihoodSource } from "@/config/riskScales";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import IcaoMatrixPanel from "./IcaoMatrixPanel";
 import DistressCoveragePanel from "./DistressCoveragePanel";
 import RiskMethodologyPanel from "./RiskMethodologyPanel";
+import VariantComparisonPanel from "./VariantComparisonPanel";
 import UnitRiskPanel from "./UnitRiskPanel";
 
 interface RiskTabProps {
@@ -61,18 +65,36 @@ export default function RiskTab({
 }: RiskTabProps) {
   const [branchId, setBranchId] = useState<string>(RUNWAY_OPTIONS[0].id);
   const [selectedCell, setSelectedCell] = useState<string | null>(null);
+  // Section 9.1: runtime state, not persisted to localStorage - every session
+  // starts on DEFAULT_LIKELIHOOD_SOURCE.
+  const [likelihoodSource, setLikelihoodSource] = useState<LikelihoodSource>(DEFAULT_LIKELIHOOD_SOURCE);
 
-  const previousYear = String(Number(selectedYear) - 1);
+  const previousYearNum = Number(selectedYear) - 1;
+  const previousYear = String(previousYearNum);
   const { unitsBySection: currentUnitsBySection, loading } = usePavementData(selectedYear);
   const { unitsBySection: previousUnitsBySection } = usePavementData(previousYear);
 
-  const results: UnitRiskResult[] = useMemo(() => {
+  const inputs = useMemo(() => {
     const currentFc = currentUnitsBySection[branchId];
     if (!currentFc) return [];
     const previousFc = previousUnitsBySection[branchId];
-    const inputs = toUnitRiskInputs(branchId, "runway", Number(selectedYear), currentFc, previousFc);
-    return scoreUnits(inputs);
-  }, [branchId, selectedYear, currentUnitsBySection, previousUnitsBySection]);
+    return toUnitRiskInputs(branchId, "runway", Number(selectedYear), currentFc, previousFc, previousYearNum);
+  }, [branchId, selectedYear, previousYearNum, currentUnitsBySection, previousUnitsBySection]);
+
+  // Section 9.1: recompute the WHOLE array on every variant change, never patch
+  // riskScore alone - band/icao/dru all depend on likelihood too.
+  const results: UnitRiskResult[] = useMemo(() => scoreUnits(inputs, likelihoodSource), [inputs, likelihoodSource]);
+  // Section 9.2/9.3: both variants, always scored, independent of which is
+  // active - drives the comparison panel and the "shifted only" table mode.
+  const resultsA = useMemo(() => scoreUnits(inputs, "tdv"), [inputs]);
+  const resultsB = useMemo(() => scoreUnits(inputs, "pci"), [inputs]);
+
+  const handleSelectSource = (source: LikelihoodSource) => {
+    setLikelihoodSource(source);
+    // Section 9.4 item 1: a cell selected under the old variant may not exist
+    // under the new one - clear it rather than leave a filter with no rows.
+    setSelectedCell(null);
+  };
 
   // "Covered" here means the union of branches with sample-unit distress
   // evidence or repair-log evidence - the two sources that still have any
@@ -113,15 +135,44 @@ export default function RiskTab({
         {ICAO_GRID_PROVENANCE}
       </p>
 
-      <ToggleGroup type="single" variant="outline" size="sm" value={branchId} onValueChange={(v) => v && setBranchId(v)}>
-        {RUNWAY_OPTIONS.map((r) => (
-          <ToggleGroupItem key={r.id} value={r.id}>
-            {r.label}
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <ToggleGroup type="single" variant="outline" size="sm" value={branchId} onValueChange={(v) => v && setBranchId(v)}>
+          {RUNWAY_OPTIONS.map((r) => (
+            <ToggleGroupItem key={r.id} value={r.id}>
+              {r.label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
 
-      <IcaoMatrixPanel results={results} selectedCell={selectedCell} onSelectCell={handleSelectCell} />
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Likelihood</span>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            value={likelihoodSource}
+            onValueChange={(v) => v && handleSelectSource(v as LikelihoodSource)}
+          >
+            <ToggleGroupItem value="tdv" title="Likelihood from the sum of deduct value across every distress on the unit. Preserves the signal from stacked distress types.">
+              A &middot; deduct ASTM
+            </ToggleGroupItem>
+            <ToggleGroupItem value="pci" title="Likelihood from the unit's own PCI, read on the ASTM condition class. Uses the already-corrected figure, but flattens the top end.">
+              B &middot; PCI unit
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <button
+            onClick={() => downloadUnitRiskResultsCsv(results, { branchId, surveyYear: Number(selectedYear), likelihoodSource })}
+            className="h-8 inline-flex items-center gap-1.5 px-3 rounded-md text-xs font-medium border border-border text-foreground hover:bg-secondary transition-colors"
+            title="Export this table's scored results as CSV, with branch/year/variant in the header"
+          >
+            <Download size={12} /> Export CSV
+          </button>
+        </div>
+      </div>
+
+      <IcaoMatrixPanel results={results} selectedCell={selectedCell} onSelectCell={handleSelectCell} likelihoodSource={likelihoodSource} />
+
+      <VariantComparisonPanel resultsA={resultsA} resultsB={resultsB} />
 
       <DistressCoveragePanel
         stats={repairLogStats}
@@ -130,11 +181,14 @@ export default function RiskTab({
         sampleUnitBranchCount={Object.keys(unitsBySection).length}
       />
 
-      <RiskMethodologyPanel />
+      <RiskMethodologyPanel results={results} likelihoodSource={likelihoodSource} />
 
       <UnitRiskPanel
         selectedYear={selectedYear}
         results={results}
+        compareA={resultsA}
+        compareB={resultsB}
+        likelihoodSource={likelihoodSource}
         loading={loading}
         selectedCell={selectedCell}
         onClearCellFilter={() => setSelectedCell(null)}

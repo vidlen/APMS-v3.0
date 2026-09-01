@@ -1,18 +1,29 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { BookOpen, ChevronDown } from "lucide-react";
-import { DOMINANT_DISTRESS_METRIC } from "@/config/riskScales";
+import type { UnitRiskResult } from "@/lib/risk-unit";
+import type { LikelihoodSource } from "@/config/riskScales";
+import { DRU_PROVENANCE } from "@/lib/dru";
 
-const METRIC_LABEL: Record<string, string> = {
-  count: "record count",
-  area: "affected area",
-  severity_area: "severity x area",
+interface RiskMethodologyPanelProps {
+  results: UnitRiskResult[];
+  likelihoodSource: LikelihoodSource;
+}
+
+const SOURCE_LABEL: Record<LikelihoodSource, string> = {
+  tdv: "A - total ASTM deduct value (TDV)",
+  pci: "B - unit PCI",
 };
 
-// Section 8 (riskScales.ts) read out as prose rather than as a second
+// Section 9 (metode-b-r1-spec.md) read out as prose rather than as a second
 // bibliography - the citations themselves live as comments in the config
 // files, this panel is the "why" a defence would actually be asked about.
-export default function RiskMethodologyPanel() {
+export default function RiskMethodologyPanel({ results, likelihoodSource }: RiskMethodologyPanelProps) {
   const [open, setOpen] = useState(false);
+
+  const undefinedRate = useMemo(() => {
+    const units = results.filter((r) => r.observedRateClass === "tidak_terdefinisi");
+    return { count: units.length, total: results.length };
+  }, [results]);
 
   return (
     <div className="rounded-lg border border-border overflow-hidden">
@@ -24,6 +35,9 @@ export default function RiskMethodologyPanel() {
         <span className="flex items-center gap-2">
           <BookOpen size={14} className="text-muted-foreground shrink-0" />
           <span className="panel-label">Methodology &amp; literature</span>
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+            Likelihood: {SOURCE_LABEL[likelihoodSource]}
+          </span>
         </span>
         <ChevronDown
           size={14}
@@ -34,11 +48,14 @@ export default function RiskMethodologyPanel() {
       {open && (
         <div className="px-5 pb-5 space-y-5 text-xs text-muted-foreground leading-relaxed">
           <p>
-            Likelihood comes from the Markov/PCI forecast tiers (<code className="font-mono">risk.ts</code>).
-            Frequency comes from operational role. Consequence comes from distress types recorded in
-            the airport&apos;s own repair log - 678 dated records over 2025-08-30 to 2026-02-26 - mapped to
-            failure modes following Pasindu (2011) and weighted by severity and extent, the closest
-            analogue available to an ASTM D5340 deduct value when none is recorded.
+            Likelihood comes from each sample unit&apos;s own ASTM D5340 distress records - either its total deduct
+            value (variant A) or its own PCI read on the same condition-class boundaries (variant B), currently{" "}
+            <span className="text-foreground font-medium">{SOURCE_LABEL[likelihoodSource]}</span>. Frequency comes
+            from how much of the unit&apos;s own area a hazard covers, capped at the facility role&apos;s exposure
+            ceiling. Consequence comes from the dominant distress&apos;s failure mode (fod / friction / structural /
+            other) crossed with the facility role, escalated one step - never past 40 - when a non-patching distress
+            on the unit is High severity. The operational verdict is the ICAO Doc 9859 zone, not the Fine-Kinney
+            degree; DRU Urgency follows that same zone.
           </p>
 
           <div>
@@ -47,39 +64,50 @@ export default function RiskMethodologyPanel() {
             </p>
             <ul className="space-y-2 list-disc pl-4">
               <li>
-                Coverage stops at 31 of 75 branches. The log&apos;s own header reads &quot;Unit: North
-                Runway&quot;, so the remaining branches are a scope boundary in the source data, not a
-                fault in the join - see the coverage panel above for which of the 44 have no repair
-                recorded versus which are outright outside the log&apos;s scope.
+                Deduct value and hazard coverage are correlated (roughly 0.76-0.81 Pearson across the committed
+                runways) because a denser distress record scores both higher deduct and higher coverage. This is
+                accepted with eyes open: deduct measures how damaged a unit is, coverage measures how often an
+                aircraft actually meets it - related, but not the same question.
               </li>
               <li>
-                Severity weighting is linear (<code className="font-mono">SEVERITY_WEIGHT</code>: RINGAN
-                1, SEDANG 2, BERAT 3) while ASTM D5340 deduct curves are not. Extent x severity is a
-                stand-in for a deduct value the log does not carry, not a claim that the relationship is
-                actually linear.
+                A linear-quantity distress (metres, e.g. L &amp; T CR) is folded into coverage using a 1.0 m
+                influence width - roughly a main-gear track plus spray. This is a research decision, not a citation,
+                and is open to recalibration.
               </li>
               <li>
-                The three candidate ranking metrics - count, area, severity x area - disagree on which
-                distress dominates a branch, and on the hazard class that follows from it, for 5 of the
-                31 covered branches. <code className="font-mono">DOMINANT_DISTRESS_METRIC</code> (currently{" "}
-                <span className="text-foreground font-medium">{METRIC_LABEL[DOMINANT_DISTRESS_METRIC]}</span>) is
-                a stated modelling decision for exactly that reason, not a default nobody chose.
+                DRU Relevancy and Urgency are this implementation&apos;s own proposal, not content reproduced from
+                Anderson - see the provenance note below.
               </li>
             </ul>
           </div>
 
+          <div className="rounded-md border border-dashed border-border px-3 py-2.5">
+            <p className="text-foreground font-semibold text-[11px] uppercase tracking-wide mb-1">DRU provenance</p>
+            <p>{DRU_PROVENANCE}</p>
+          </div>
+
+          <div className="rounded-md border border-dashed border-border px-3 py-2.5">
+            <p className="text-foreground font-semibold text-[11px] uppercase tracking-wide mb-1">
+              ICAO Doc 9859 Table 4 - Intolerable zone, source wording
+            </p>
+            <p className="italic">&quot;Take immediate action to mitigate the risk or stop the activity.&quot;</p>
+            <p className="mt-1.5">
+              Shown here as the source text, separate from this app&apos;s own action sentence (ICAO_ZONES.Intolerable
+              in icaoMatrix.ts), which is deliberately softer - see that file&apos;s own note on why a live runway is
+              never told to close from this dashboard.
+            </p>
+          </div>
+
           <div>
             <p className="text-foreground font-semibold text-[11px] uppercase tracking-wide mb-2">
-              What Pasindu&apos;s model does not reproduce here
+              Observed-rate class: undefined units
             </p>
             <p>
-              Pasindu (2011) computes hydroplaning speed and braking distance from a finite-element
-              tire-fluid-pavement simulation driven by rut depth, pavement texture depth, cross slope
-              and aircraft landing-weight distributions. APMS records none of those measurements, so
-              that computation cannot run on this network. What transfers from his work is the
-              framing - grouping distresses by the failure mode they drive on aircraft operations
-              rather than by pavement-engineering family (see the hazard-class comments in{" "}
-              <code className="font-mono">riskScales.ts</code>) - not his numbers.
+              <span className="font-mono font-semibold text-foreground">{undefinedRate.count}</span> of{" "}
+              {undefinedRate.total} units on this runway/year show observed-rate class &quot;Undefined&quot;
+              (tidak_terdefinisi) - either their previous-year comparison uses a display-filler PCI, or the two
+              years being compared were surveyed under different regimes (e.g. a full PAVER survey compared against
+              a year with zero recorded distress) and are therefore not a meaningful one-year delta.
             </p>
           </div>
         </div>

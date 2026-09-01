@@ -47,7 +47,11 @@ export default function DistressCoveragePanel({
   return (
     <div className="rounded-lg border border-border overflow-hidden">
       <div className="px-5 py-4">
-        <h3 className="panel-label mb-3">Distress evidence coverage</h3>
+        <h3 className="panel-label mb-3">Maintenance repair-log coverage</h3>
+        <p className="text-[11px] text-muted-foreground -mt-2 mb-3">
+          Which branches the airport's own repair log has evidence for - unrelated to Metode B's risk-assessment
+          coverage below, which is scored from PCI sample units on RWY 06/24 and RWY 07L/25R only.
+        </p>
 
         <div className="flex divide-x divide-border">
           <Stat value={coveredBranches} label={`of ${totalBranches} branches covered`} />

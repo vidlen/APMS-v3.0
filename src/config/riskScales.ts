@@ -9,7 +9,9 @@
  *
  * PRIMARY SOURCES
  *  [1] Kinney, G.F. & Wiruth, A.D. (1976). Practical Risk Analysis for Safety
- *      Management. Naval Weapons Center, China Lake, CA.
+ *      Management. Naval Weapons Center, China Lake, CA. NOT held in full -
+ *      cited secondarily through [2], which reproduces it as reference [48].
+ *      See metode-b-r1-spec.md section 13.
  *  [2] Seven, E. & Yardim, M.S. (2024). An Integrated Risk Management Model for
  *      Performance Assessment of Airport Pavements: The Case of Istanbul
  *      Airport. Applied Sciences 14(24), 12034. (APIRM model)
@@ -323,16 +325,32 @@ export const DISTRESS_TO_HAZARD_CLASS: Record<string, HazardClass> = {
   'OIL SPILLAGE': 'other',
 };
 
+/**
+ * Recalibrated for Metode B (metode-b-r1-spec.md section 5.1): the unique
+ * L.F.C decompositions of Seven & Yardim Table 7 (p. 13, runway) only use
+ * C = 1, 3, 7, 15 - 40 appears on the three worst hazards only, and 100 never
+ * appears. The old table above used 40/100 as ordinary runway/fod values,
+ * which is why every fod/friction runway unit used to saturate straight into
+ * degree 5 - see riskScales.ts's own RISK_BANDS note on saturation.
+ */
 export const CONSEQUENCE_MATRIX: Record<BranchRole, Record<HazardClass, number>> = {
   //                    fod  friction  structural  other
-  runway: { fod: 40, friction: 40, structural: 15, other: 7 },
-  high_speed_exit: { fod: 15, friction: 15, structural: 7, other: 3 },
-  parallel_taxiway: { fod: 15, friction: 7, structural: 7, other: 3 },
-  secondary_taxiway: { fod: 7, friction: 7, structural: 7, other: 3 },
-  active_apron: { fod: 7, friction: 3, structural: 7, other: 3 },
-  remote_apron: { fod: 3, friction: 3, structural: 3, other: 1 },
-  non_movement: { fod: 1, friction: 1, structural: 3, other: 1 },
+  runway: { fod: 15, friction: 15, structural: 7, other: 3 },
+  high_speed_exit: { fod: 7, friction: 7, structural: 3, other: 1 },
+  parallel_taxiway: { fod: 7, friction: 3, structural: 3, other: 1 },
+  secondary_taxiway: { fod: 3, friction: 3, structural: 3, other: 1 },
+  active_apron: { fod: 3, friction: 3, structural: 3, other: 1 },
+  remote_apron: { fod: 1, friction: 1, structural: 1, other: 1 },
+  non_movement: { fod: 1, friction: 1, structural: 1, other: 1 },
 };
+
+/** Unit with no distress record at all: no hazard, lowest consequence.
+ *  Distinct from CONSEQUENCE_MATRIX[role].other, which is the consequence of
+ *  a REAL distress whose hazard class happens to be 'other' (e.g. OIL SPILLAGE). */
+export const NO_DISTRESS_CONSEQUENCE = 1;
+
+/** Severity escalation (Metode B, section 5.2) never pushes C past this value. */
+export const CONSEQUENCE_ESCALATION_CAP = 40;
 
 /* =============================================================================
  * 6. DETECTABILITY  (locked decision 6)
@@ -566,8 +584,14 @@ export const SEVERITY_WEIGHT: Record<string, number> = { RINGAN: 1, SEDANG: 2, B
  * is what determines a distress's effect on aircraft operations (the same
  * argument already cited for DOMINANT_DISTRESS_METRIC above).
  *
- * This is opt-in per branch, exactly as DETECTABILITY_ESCALATION already is
- * (locked decision 6, risk.ts): a label is not even computed automatically
+ * This escalation is opt-in per branch, exactly as DETECTABILITY_ESCALATION
+ * already is (locked decision 6, risk.ts) - but note that is no longer true
+ * for Metode B's OWN severity escalation (risk-unit.ts scoreUnit, section 5.2
+ * of metode-b-r1-spec.md): a non-PATCHING High-severity distress on a sample
+ * unit escalates C automatically, capped at CONSEQUENCE_ESCALATION_CAP. The
+ * two escalations are unrelated - this section's SEVERITY_CONSEQUENCE_ESCALATION
+ * belongs to the (now unused) branch-level admin-override path described
+ * below; Metode B never reads it. A label is not even computed automatically
  * here, because unlike hazardClass - mechanically derivable from a single
  * distress name - a branch's PREVAILING severity requires aggregating the
  * raw Tingkat Kerusakan distribution behind its dominant distress, which
@@ -642,18 +666,18 @@ export const REPAIR_LOG_NO_RECORD_IN_WINDOW: string[] = [
 ];
 
 /* =============================================================================
- * 9. METODE B - DISTRESS-DERIVED LIKELIHOOD (sample-unit tier, risk-unit.ts)
+ * 9. METODE B - LIKELIHOOD FROM ASTM DEDUCT/PCI (sample-unit tier, risk-unit.ts)
  *
  * Everything above this section scores a BRANCH from one aggregate PCI value
  * (PCI_TO_LIKELIHOOD, untouched). Metode B scores a SAMPLE UNIT directly from
- * its own distress records - type, severity and PAVER density - so Likelihood
- * no longer passes through PCI at all on this path. PCI_TO_LIKELIHOOD must
- * stay unused here even for a unit with zero distress: that unit gets index 0
- * and likelihood 0.1, never a PCI-derived figure. See metode-b-spec_4.md
- * section 0.6.1 point 5.
+ * its own distress records - now via the ASTM D5340 deduct value already
+ * carried by every distress record, not a home-grown severity x extent index.
+ * See metode-b-r1-spec.md sections 1.1 and 3.
  * ========================================================================== */
 
-/** Severity weight, 1 to 4. Unitless, applies to every distress type. */
+/** Severity weight, 1 to 4. Unitless, applies to every distress type. Still
+ *  used by DRU (dru.ts) for Degree and Relevancy - do not remove alongside
+ *  the extent-level tables below, which DRU never read. */
 export const SEVERITY_LEVEL: Record<'N/A' | 'Low' | 'Medium' | 'High', 1 | 2 | 3 | 4> = {
   'N/A': 1,
   Low: 2,
@@ -661,39 +685,90 @@ export const SEVERITY_LEVEL: Record<'N/A' | 'Low' | 'Medium' | 'High', 1 | 2 | 3
   High: 4,
 };
 
-/**
- * Extent-level thresholds, PER DISTRESS TYPE, read against PAVER's own
- * density output. Must stay per-type: L&T CR's density is linear-quantity /
- * area x 100 (m per m2 x 100), while every other type here is area / area x
- * 100 (dimensionless) - the two are not on the same scale, so one shared
- * threshold set would silently compare apples to metres. Thresholds are the
- * Q1/Q2/Q3 quartiles of the 2025 survey's real density distribution per type
- * (metode-b-spec_4.md section 3.4 table).
- *
- * ponytail: fixed thresholds from one survey year, not recalibrated per year.
- * Recalibrate once a second full survey year's density distribution exists.
- */
-export const EXTENT_LEVEL_THRESHOLDS: Record<string, [number, number, number]> = {
-  RAVELING: [0.05, 0.20, 1.00],
-  'L & T CR': [0.08, 0.15, 0.50],
-  'ALLIGATOR CR': [0.05, 0.15, 0.35],
-  PATCHING: [0.10, 0.25, 0.60],
-  BLEEDING: [0.50, 5.0, 20.0],
-};
+/** Source of Likelihood - the one axis metode-b-r1-spec.md section 3.6 builds
+ *  two variants for. Everything downstream of L (F, C, escalation, R, band,
+ *  ICAO cell, DRU, observed-rate class) is identical for both - only this one
+ *  read differs. Never fork scoreUnit into two copies over this. */
+export type LikelihoodSource = 'tdv' | 'pci';
 
-/** Fallback thresholds for a distress type EXTENT_LEVEL_THRESHOLDS has no row for. */
-export const EXTENT_LEVEL_FALLBACK: [number, number, number] = [0.05, 0.20, 1.00];
+/** Default variant shown when the Risk tab first opens (section 9.1) - not
+ *  persisted to localStorage, so every session starts here. */
+export const DEFAULT_LIKELIHOOD_SOURCE: LikelihoodSource = 'tdv';
 
 /**
- * Maps a unit's 0..16 distress index onto the seven LIKELIHOOD_VALUES levels.
- * Boundaries are provisional - see metode-b-spec_4.md section 12 item 2.
+ * Variant A - Likelihood from a unit's total ASTM deduct value (TDV).
+ * Thresholds are the ASTM D5340 condition-class boundaries expressed as
+ * deduct (100 - PCI boundary): Good <=15, Satisfactory 15-30, Fair 30-45,
+ * Poor 45-60, Very Poor 60-75, Serious 75-90, Failed >=90. TDV >= CDV always
+ * (ASTM's q-correction only ever reduces deduct), so this mapping is
+ * conservative: a unit never gets a lighter L than its own ASTM condition
+ * class would suggest. See metode-b-r1-spec.md section 3.5 for how large that
+ * gap runs in practice (UnitRiskResult.likelihoodClassGap).
  */
-export const DISTRESS_INDEX_TO_LIKELIHOOD = [
-  { minIndex: 13, likelihood: 10 },
-  { minIndex: 10, likelihood: 6 },
-  { minIndex: 7, likelihood: 3 },
-  { minIndex: 5, likelihood: 1 },
-  { minIndex: 3, likelihood: 0.5 },
-  { minIndex: 1, likelihood: 0.2 },
-  { minIndex: 0, likelihood: 0.1 },
+export const L_FROM_TOTAL_DEDUCT = [
+  { minTdv: 90, likelihood: 10 }, // Failed
+  { minTdv: 75, likelihood: 6 }, //  Serious
+  { minTdv: 60, likelihood: 3 }, //  Very Poor
+  { minTdv: 45, likelihood: 1 }, //  Poor
+  { minTdv: 30, likelihood: 0.5 }, // Fair
+  { minTdv: 15, likelihood: 0.2 }, // Satisfactory
+  { minTdv: 0, likelihood: 0.1 }, //  Good
 ] as const;
+
+/**
+ * Variant B - Likelihood from the unit's own (ASTM-corrected) PCI, read on
+ * the same seven condition-class boundaries as variant A. Only valid on a
+ * unit whose PCI came from a real survey (UnitRiskInput.pciIsReal) - calling
+ * scoreUnit with source 'pci' on a display-filler-PCI unit throws rather than
+ * silently scoring off a fabricated number (section 3.6).
+ */
+export const L_FROM_UNIT_PCI = [
+  { minPci: 85, likelihood: 0.1 }, // Good
+  { minPci: 70, likelihood: 0.2 }, // Satisfactory
+  { minPci: 55, likelihood: 0.5 }, // Fair
+  { minPci: 40, likelihood: 1 }, //   Poor
+  { minPci: 25, likelihood: 3 }, //   Very Poor
+  { minPci: 10, likelihood: 6 }, //   Serious
+  { minPci: 0, likelihood: 10 }, //   Failed
+] as const;
+
+/* =============================================================================
+ * 9b. METODE B - FREQUENCY FROM HAZARD COVERAGE
+ *
+ * Fine-Kinney Frequency is exposure TO THE HAZARD, not facility usage rate -
+ * Seven & Yardim Table 7 (p. 13) gives F = 0.5 on the same runway where the
+ * worst hazard gets F = 6, which ROLE_TO_FREQUENCY alone (a flat per-role
+ * constant) can never reproduce. Coverage - the share of the unit's own area
+ * a hazard actually occupies - is the exposure proxy; ROLE_TO_FREQUENCY above
+ * stays in play as an upper bound (F = min(fromCoverage, ROLE_TO_FREQUENCY)),
+ * so a non-movement-area unit still never outranks a runway's exposure no
+ * matter how much of its own area is distressed. See section 4.
+ * ========================================================================== */
+
+/** Coverage divisor - the SAME 10m x 60m = 600 m2 nominal PAVER divides
+ *  distress density by (verified against risk-unit-adapter.ts fixture
+ *  figures), not each unit's own surveyed polygon area (567.8-615.0 m2). A
+ *  real-polygon divisor would make coverage incomparable between units and
+ *  between runways, and would move at least one unit across a risk-band edge
+ *  on real data (metode-b-r1-spec.md section 4.1). */
+export const COVERAGE_DIVISOR_M2 = 600;
+
+/**
+ * Frequency from hazard coverage, %. Ladder follows Fine-Kinney's own
+ * exposure-frequency semantics (hours -> days -> weeks -> months -> a few
+ * times a year -> once a year): the smaller the share of the unit a hazard
+ * covers, the less often an aircraft actually encounters it.
+ */
+export const F_FROM_COVERAGE = [
+  { minCoveragePct: 50, frequency: 10 }, //  continuous
+  { minCoveragePct: 10, frequency: 6 }, //   daily
+  { minCoveragePct: 2, frequency: 3 }, //    weekly
+  { minCoveragePct: 0.5, frequency: 2 }, //  monthly
+  { minCoveragePct: 0.1, frequency: 1 }, //  a few times a year
+  { minCoveragePct: 0, frequency: 0.5 }, //  once a year
+] as const;
+
+/** Influence width for a linear-quantity distress (e.g. L & T CR, metres) when
+ *  folded into an area-based coverage figure - roughly a main gear track plus
+ *  spray. A research decision, not a citation; state and defend it (section 4.1). */
+export const LINEAR_INFLUENCE_WIDTH_M = 1.0;

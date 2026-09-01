@@ -10,7 +10,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LIKELIHOOD_VALUES, FREQUENCY_SCALE, CONSEQUENCE_VALUES, RISK_BANDS } from './riskScales.ts';
+import { LIKELIHOOD_VALUES, FREQUENCY_SCALE, CONSEQUENCE_VALUES, RISK_BANDS, CONSEQUENCE_ESCALATION_CAP } from './riskScales.ts';
 
 test('LIKELIHOOD_VALUES matches Seven & Yardim (2024) Table 5', () => {
   assert.deepEqual(LIKELIHOOD_VALUES, [0.1, 0.2, 0.5, 1, 3, 6, 10]);
@@ -38,4 +38,8 @@ test('RISK_BANDS boundaries are exact at 20, 70, 200 and 400', () => {
       [400, Number.POSITIVE_INFINITY],
     ],
   );
+});
+
+test('CONSEQUENCE_ESCALATION_CAP is 40 - Metode B severity escalation never reaches ICAO severity A', () => {
+  assert.equal(CONSEQUENCE_ESCALATION_CAP, 40);
 });

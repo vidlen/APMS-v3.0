@@ -2,12 +2,18 @@ import { useMemo } from "react";
 import type { IcaoAssessment } from "@/lib/icao";
 import { zoneFor } from "@/lib/icao";
 import { LF_TO_ICAO_PROBABILITY, C_TO_ICAO_SEVERITY, ICAO_ZONES } from "@/config/icaoMatrix";
+import type { LikelihoodSource } from "@/config/riskScales";
+
+const SOURCE_LABEL: Record<LikelihoodSource, string> = { tdv: "A - TDV", pci: "B - PCI" };
 
 interface IcaoMatrixPanelProps {
   /** Only `icao` is read - any scored result works, branch- or unit-level. */
   results: { icao: IcaoAssessment }[];
   selectedCell: string | null;
   onSelectCell: (cell: string | null) => void;
+  /** Shown in the subtitle so a screenshot of this panel is traceable to the
+   *  variant that produced it (metode-b-r1-spec.md section 9.1). */
+  likelihoodSource?: LikelihoodSource;
 }
 
 // Rows top-to-bottom = probability 5 (Frequent) down to 1 (Extremely
@@ -24,7 +30,7 @@ const SEVERITY_LABELS = Object.fromEntries(
   C_TO_ICAO_SEVERITY.map((s) => [s.severity, s.label]),
 ) as Record<string, string>;
 
-export default function IcaoMatrixPanel({ results, selectedCell, onSelectCell }: IcaoMatrixPanelProps) {
+export default function IcaoMatrixPanel({ results, selectedCell, onSelectCell, likelihoodSource }: IcaoMatrixPanelProps) {
   // Every cell's count, including the ones no branch currently occupies -
   // zoneFor (icao.ts) is the same function assessIcao uses, so a cell's
   // shading here can never disagree with what scoreBranch assigned it.
@@ -43,7 +49,8 @@ export default function IcaoMatrixPanel({ results, selectedCell, onSelectCell }:
       <div className="bg-card border-b border-border px-4 py-3">
         <h3 className="panel-label">ICAO 5&times;5 matrix &mdash; probability &times; severity</h3>
         <p className="text-[11px] text-muted-foreground mt-1">
-          Branch counts per cell. Click a cell to filter the register below to it.
+          Sample-unit counts per cell{likelihoodSource ? ` — likelihood variant ${SOURCE_LABEL[likelihoodSource]}` : ""}.
+          Click a cell to filter the register below to it.
         </p>
       </div>
       <div className="p-4 overflow-x-auto">

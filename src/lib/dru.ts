@@ -8,24 +8,43 @@
  * DruRelevancy, DruUrgency, DruExtent) are reproduced from that source and
  * must not be renumbered.
  *
- * DEVIATION FROM metode-b-spec_4.md SECTION 6.2:
+ * REVISED by metode-b-r1-spec.md section 8:
+ *   - Urgency is now driven by the ICAO zone (the bounded verdict layer),
+ *     never by the Fine-Kinney degree - riskScales.ts states elsewhere that
+ *     the degree is "REPORTING ONLY ... must never be rendered as an
+ *     instruction to the operator", and Urgency driving repair scheduling is
+ *     exactly that instruction.
+ *   - Relevancy now has four levels (was two), gated on the dominant
+ *     distress's own severity, not just its hazard class.
+ *   - Extent is a real axis (druExtentBand/druCell), not a computed-then-
+ *     discarded percentage - Anderson p. 36 crosses (Relevancy & Degree) with
+ *     Extent to produce the Element Risk Matrix.
+ *   - Degree's extent input is now coveragePct (risk-unit.ts section 4.1),
+ *     which includes PATCHING and linear distress - the old
+ *     totalDistressAreaM2 excluded both.
+ *
+ * DEVIATION FROM metode-b-spec_4.md SECTION 6.2 (unchanged from the original):
  *   The brief writes druFromUnit(input: UnitRiskInput): DruRating - one
- *   argument. But its own Urgency rule reads "digabungkan dari band
- *   Fine-Kinney dan observedRateClass" (combined from the Fine-Kinney band and
- *   the observed-rate class), and neither the Fine-Kinney band nor the rate
- *   class is a field on UnitRiskInput - both are OUTPUTS of scoring a unit,
- *   computed once already in risk-unit.ts's scoreUnit. Recomputing them here
- *   would mean importing scoreUnit from risk-unit.ts, which already imports
- *   druFromUnit from this file - a real runtime circular dependency, not just
- *   a type one. So this signature takes the already-computed band and rate
- *   class as explicit parameters instead of silently re-deriving them.
+ *   argument. But Urgency needs the already-computed ICAO zone and observed
+ *   rate class, and neither is a field on UnitRiskInput - both are OUTPUTS of
+ *   scoring a unit, computed once already in risk-unit.ts's scoreUnit.
+ *   Recomputing them here would mean importing scoreUnit from risk-unit.ts,
+ *   which already imports druFromUnit from this file - a real runtime
+ *   circular dependency, not just a type one. So this signature takes them as
+ *   explicit parameters instead of silently re-deriving them.
  * -----------------------------------------------------------------------------
  */
 
-import type { RiskBand, HazardClass } from '../config/riskScales.ts';
+import type { HazardClass } from '../config/riskScales.ts';
+import type { IcaoZoneName } from '../config/icaoMatrix.ts';
 import type { ObservedRateClass } from './observed-rate.ts';
 import type { UnitDistress, UnitRiskInput } from './risk-unit.ts';
 import { SEVERITY_LEVEL } from '../config/riskScales.ts';
+
+/** Shown next to the DRU table, mirroring ICAO_GRID_PROVENANCE (icaoMatrix.ts). */
+export const DRU_PROVENANCE =
+  'DRU scale from Anderson (CAPTG) p. 35. The Relevancy and Urgency mappings below are this ' +
+  "implementation's research proposal, not content reproduced from that source.";
 
 /** Degree - condition of the defect. */
 export type DruDegree = 'E' | 'V' | 'L' | 'M' | 'H';
@@ -39,8 +58,8 @@ export type DruDegree = 'E' | 'V' | 'L' | 'M' | 'H';
 export type DruRelevancy = 1 | 2 | 3 | 4;
 // 1  minimum relevance - no structural or safety issue
 // 2  minor impact on structural integrity or safety
-// 3  structural integrity and safety are disturbed
-// 4  maximum relevance - severely disturbed, collapse threatened
+// 3  structural integrity or safety compromised
+// 4  maximum relevance - severely compromised, collapse imminent and/or danger to users
 
 /** Urgency - deadline for repair. */
 export type DruUrgency = 'M' | 'R' | 1 | 2 | 3 | 4;
@@ -59,6 +78,13 @@ export interface DruRating {
   relevancy: DruRelevancy;
   urgency: DruUrgency;
   extentPct: DruExtent;
+  /** Smallest DRU_EXTENT_BANDS value >= extentPct - the column Anderson p. 36
+   *  actually keys the Element Risk Matrix on. */
+  extentBand: number;
+  /** "R{relevancy}/D-{degree}/E-{extentBand}" - Anderson's matrix coordinate.
+   *  Position marker only; the CRITICAL/WARNING shading on p. 36 is not yet
+   *  read from source (section 8.4), so this is never rendered as a verdict. */
+  druCell: string;
   trace: string[];
 }
 
@@ -67,27 +93,26 @@ export interface DruRating {
  * than something needing light maintenance (L). Not from Anderson - a
  * modelling decision this implementation adds to make Degree finer than a
  * flat severity lookup. Needs the same defence as the Relevancy/Urgency
- * tables below (metode-b-spec_4.md section 12 item 4).
+ * tables below (metode-b-r1-spec.md section 14 item 4).
  *
  * ponytail: single flat percent, not calibrated per distress type. Revisit if
  * the defence needs Degree=V argued at finer resolution.
  */
 export const DRU_V_EXTENT_THRESHOLD_PCT = 1;
 
-const HAZARD_CLASS_RELEVANCY: Record<HazardClass, DruRelevancy> = {
-  structural: 3,
-  fod: 3, // spec text: "fod bernilai 3 pada runway" - see runway-only note below
-  friction: 2,
-  other: 1,
-};
+/**
+ * Extent bands, Anderson p. 36's matrix columns. druExtentBand maps a raw
+ * coverage percent onto the smallest band that contains it - coverage 0% and
+ * anything under 1% both land in band 1, since that is the matrix's first
+ * column; coverage above 100 cannot occur.
+ */
+export const DRU_EXTENT_BANDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 75, 80, 90, 95, 100];
 
-/** Total area (m2) of every non-PATCHING distress recorded in SqM. Distress
- *  recorded in M (linear, e.g. L & T CR) is excluded - it isn't an area
- *  figure to begin with, so it was never part of "total distress area". */
-function totalDistressAreaM2(distresses: UnitDistress[]): number {
-  return distresses
-    .filter((d) => d.type !== 'PATCHING' && d.quantityUnits === 'SqM')
-    .reduce((sum, d) => sum + d.quantity, 0);
+export function druExtentBand(coverage: number): number {
+  for (const band of DRU_EXTENT_BANDS) {
+    if (coverage <= band) return band;
+  }
+  return DRU_EXTENT_BANDS[DRU_EXTENT_BANDS.length - 1];
 }
 
 function highestSeverityWeight(distresses: UnitDistress[]): number {
@@ -96,7 +121,7 @@ function highestSeverityWeight(distresses: UnitDistress[]): number {
   return max;
 }
 
-function degreeFor(distresses: UnitDistress[], extentPct: number, trace: string[]): DruDegree {
+function degreeFor(distresses: UnitDistress[], coverage: number, trace: string[]): DruDegree {
   if (distresses.length === 0) {
     trace.push('DRU degree E: no distress recorded');
     return 'E';
@@ -111,72 +136,88 @@ function degreeFor(distresses: UnitDistress[], extentPct: number, trace: string[
     return 'M';
   }
   // weight is Low (2) or N/A (1) - both below Medium.
-  if (weight >= SEVERITY_LEVEL.Low && extentPct >= DRU_V_EXTENT_THRESHOLD_PCT) {
-    trace.push(`DRU degree L: highest severity Low, extent ${extentPct.toFixed(2)}% >= ${DRU_V_EXTENT_THRESHOLD_PCT}%`);
+  if (weight >= SEVERITY_LEVEL.Low && coverage >= DRU_V_EXTENT_THRESHOLD_PCT) {
+    trace.push(`DRU degree L: highest severity Low, coverage ${coverage.toFixed(2)}% >= ${DRU_V_EXTENT_THRESHOLD_PCT}%`);
     return 'L';
   }
-  trace.push(`DRU degree V: highest severity below Medium and extent ${extentPct.toFixed(2)}% < ${DRU_V_EXTENT_THRESHOLD_PCT}%`);
+  trace.push(`DRU degree V: highest severity below Medium and coverage ${coverage.toFixed(2)}% < ${DRU_V_EXTENT_THRESHOLD_PCT}%`);
   return 'V';
 }
 
-function relevancyFor(hazardClass: HazardClass, role: UnitRiskInput['role'], trace: string[]): DruRelevancy {
-  if (hazardClass === 'fod' && role !== 'runway') {
-    // Spec text only states the runway case ("fod bernilai 3 pada runway").
-    // Non-runway fod is not specified; kept one step below structural rather
-    // than left undefined. Flagged for the same defence as the rest of this
-    // table - see the file header.
-    trace.push("Relevancy 2: hazard class 'fod' on a non-runway role (unspecified in brief, provisional)");
-    return 2;
-  }
-  const relevancy = HAZARD_CLASS_RELEVANCY[hazardClass];
-  trace.push(`Relevancy ${relevancy}: hazard class '${hazardClass}'${hazardClass === 'fod' ? ' on runway' : ''}`);
-  return relevancy;
-}
-
-function urgencyFor(fkDegree: RiskBand['degree'], observedRateClass: ObservedRateClass, trace: string[]): DruUrgency {
-  if (fkDegree === 5 || observedRateClass === 'memburuk_cepat') {
-    trace.push(`Urgency 4: Fine-Kinney degree ${fkDegree} or observed rate '${observedRateClass}'`);
-    return 4;
-  }
-  if (fkDegree === 4) {
-    trace.push('Urgency 3: Fine-Kinney degree 4');
-    return 3;
-  }
-  if (fkDegree === 3) {
-    trace.push('Urgency 2: Fine-Kinney degree 3');
-    return 2;
-  }
-  if (fkDegree === 2) {
-    trace.push('Urgency 1: Fine-Kinney degree 2');
+/**
+ * Relevancy from the dominant distress's hazard class AND its own severity
+ * (section 8.2). Anderson p. 35: 2 = "minor impact on structural integrity or
+ * safety issue", 3 = "structural integrity or safety compromised", 4 =
+ * "severely compromised, collapse imminent and/or danger to users". This
+ * mapping is this implementation's research proposal, not a citation.
+ */
+export function relevancyFor(hazardClass: HazardClass, dominantSeverity: UnitDistress['severity'], trace: string[]): DruRelevancy {
+  if (hazardClass === 'other') {
+    trace.push("Relevancy 1: hazard class 'other' (or no distress)");
     return 1;
   }
-  trace.push('Urgency R: Fine-Kinney degree 1');
+  if (dominantSeverity === 'High') {
+    trace.push(`Relevancy 4: hazard class '${hazardClass}', dominant severity High`);
+    return 4;
+  }
+  if (dominantSeverity === 'Medium') {
+    trace.push(`Relevancy 3: hazard class '${hazardClass}', dominant severity Medium`);
+    return 3;
+  }
+  trace.push(`Relevancy 2: hazard class '${hazardClass}', dominant severity ${dominantSeverity}`);
+  return 2;
+}
+
+/**
+ * Urgency from the ICAO zone (section 8.3) - never from the Fine-Kinney
+ * degree, which riskScales.ts itself states must never drive an operational
+ * instruction. On Anderson's own deck (p. 34) Urgency is a column filled in
+ * by an inspector per job, not derived from another risk score; deriving it
+ * automatically here is a deliberate departure so the model can run over 660
+ * units without manual inspection - the manual override path (druOverrides)
+ * exists precisely so that departure can be corrected case by case.
+ */
+export function urgencyFor(zone: IcaoZoneName, rate: ObservedRateClass, hasDistress: boolean, trace: string[]): DruUrgency {
+  if (zone === 'Intolerable') {
+    trace.push("Urgency 4: ICAO zone 'Intolerable'");
+    return 4;
+  }
+  if (zone === 'Tolerable') {
+    const urgency = rate === 'memburuk_cepat' ? 3 : 2;
+    trace.push(`Urgency ${urgency}: ICAO zone 'Tolerable', observed rate '${rate}'`);
+    return urgency;
+  }
+  if (hasDistress) {
+    trace.push("Urgency 1: ICAO zone 'Acceptable', distress present");
+    return 1;
+  }
+  trace.push("Urgency R: ICAO zone 'Acceptable', no distress");
   return 'R';
 }
 
 /**
- * Builds a unit's DRU rating. `fkDegree` and `observedRateClass` are the
- * already-computed Fine-Kinney band degree and observed-rate class for this
- * same unit (see the file header on why they're parameters, not recomputed).
- * `overrides` lets Relevancy/Urgency be set manually, since both mappings are
- * this implementation's proposal, not a citation (metode-b-spec_4.md section
- * 6.2's closing note) - an override always wins and is recorded in `trace`.
+ * Builds a unit's DRU rating. `hazardClass`/`dominantSeverity` describe the
+ * unit's dominant distress; `icaoZone`/`observedRateClass`/`coverage` are the
+ * already-computed ICAO zone, observed-rate class and hazard-coverage percent
+ * for this same unit (see the file header on why they're parameters, not
+ * recomputed). `overrides` lets Relevancy/Urgency be set manually, since both
+ * mappings are this implementation's proposal, not a citation - an override
+ * always wins and is recorded in `trace`.
  */
 export function druFromUnit(
   input: UnitRiskInput,
   hazardClass: HazardClass,
-  fkDegree: RiskBand['degree'],
+  dominantSeverity: UnitDistress['severity'],
+  icaoZone: IcaoZoneName,
   observedRateClass: ObservedRateClass,
+  coverage: number,
   overrides?: { relevancy?: DruRelevancy; urgency?: DruUrgency },
 ): DruRating {
   const trace: string[] = [];
-  const extentAreaM2 = totalDistressAreaM2(input.distresses);
-  const extentPct = (extentAreaM2 / input.areaM2) * 100;
-  trace.push(`Extent ${extentPct.toFixed(2)}%: ${extentAreaM2.toFixed(2)} m2 of ${input.areaM2} m2 (PATCHING and linear distress excluded)`);
 
-  const degree = degreeFor(input.distresses, extentPct, trace);
-  let relevancy = relevancyFor(hazardClass, input.role, trace);
-  let urgency = urgencyFor(fkDegree, observedRateClass, trace);
+  const degree = degreeFor(input.distresses, coverage, trace);
+  let relevancy = relevancyFor(hazardClass, dominantSeverity, trace);
+  let urgency = urgencyFor(icaoZone, observedRateClass, input.distresses.length > 0, trace);
 
   if (overrides?.relevancy !== undefined) {
     trace.push(`Relevancy overridden ${relevancy} -> ${overrides.relevancy}`);
@@ -187,5 +228,9 @@ export function druFromUnit(
     urgency = overrides.urgency;
   }
 
-  return { degree, relevancy, urgency, extentPct, trace };
+  const extentBand = druExtentBand(coverage);
+  const druCell = `R${relevancy}/D-${degree}/E-${extentBand}`;
+  trace.push(`Extent band ${extentBand} from coverage ${coverage.toFixed(2)}% -> ${druCell}`);
+
+  return { degree, relevancy, urgency, extentPct: coverage, extentBand, druCell, trace };
 }
