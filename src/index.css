@@ -4,41 +4,32 @@
 
 @layer base {
   :root {
-    /* Cool near-neutral graphite — same hue family as the old blue-black
-       ground, far less chroma. Kept cool (not warmed) on purpose: the PCI
-       ramp is fixed and every live section falls in the warm arc (green
-       through orange), so a cool ground maximizes hue separation from the
-       data instead of competing with it. Every value below is contrast-
-       checked against the live 7-band ramp — see the plan doc, not vibes. */
-    --background: 220 14% 5%;
-    --foreground: 220 15% 96%;
-    --card: 220 12% 8%;
-    --card-foreground: 220 15% 96%;
-    --popover: 220 12% 8%;
-    --popover-foreground: 220 15% 96%;
-    /* Brighter than the old accent on purpose: it now draws lines and
-       underlines instead of filling large surfaces, so it needs to read at
-       a smaller area. --primary-foreground flips to dark ink here (was
-       near-white) because white-on-this-cyan measures 2.05:1 on filled
-       buttons — a real failure, not a style choice. */
-    --primary: 191 85% 48%;
-    --primary-foreground: 220 15% 8%;
-    --secondary: 220 10% 13%;
-    --secondary-foreground: 220 15% 96%;
-    --muted: 220 10% 13%;
-    --muted-foreground: 220 8% 60%;
-    --accent: 220 10% 13%;
-    --accent-foreground: 220 15% 96%;
+    /* Cool graphite ground (lebih dalam & sedikit lebih biru) — memaksimalkan
+      separasi hue dari warm PCI ramp (green→orange). */
+    --background: 219 20% 5%;
+    --foreground: 218 12% 96%;
+    --card: 219 16% 8%;
+    --card-foreground: 218 12% 96%;
+    --popover: 219 16% 8%;
+    --popover-foreground: 218 12% 96%;
+    /* Indigo-blue accent (bukan cyan) — di luar rentang warm PCI, karena itu
+      aman dipakai besar sekalipun. foreground tetap gelap demi kontras. */
+    --primary: 217 91% 60%;
+    --primary-foreground: 219 20% 12%;
+    --secondary: 219 14% 12%;
+    --secondary-foreground: 218 12% 96%;
+    --muted: 219 14% 12%;
+    --muted-foreground: 218 9% 62%;
+    --accent: 219 12% 16%;
+    --accent-foreground: 218 12% 96%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 210 40% 98%;
-    /* Slightly brighter than the old border (was 1.75:1 against its card)
-       because hairline rules become the primary structural device once
-       nested card fills are flattened — a seam this faint can't carry
-       that load. */
-    --border: 220 8% 28%;
-    --input: 220 8% 28%;
-    --ring: 191 85% 48%;
-    --radius: 0.375rem;
+    /* Border sedikit lebih terang supaya hairline tetap terbaca di ground
+      yang lebih gelap. */
+    --border: 219 12% 25%;
+    --input: 219 12% 25%;
+    --ring: 217 91% 60%;
+    --radius: 0.625rem;
   }
 
   @media (prefers-reduced-motion: reduce) {
